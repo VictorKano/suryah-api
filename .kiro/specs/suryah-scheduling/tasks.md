@@ -51,20 +51,20 @@ Rename all existing Portuguese entities, enums, repositories, packages, and JPA 
 
 Create `RecurringClass` and `FixedEnrollment` entities, add `recurringClass` relation to `ClassSession`, and create V3 migration.
 
-- [ ] 2.1 Create `br.com.suryah.recurringclass` package
+- [x] 2.1 Create `br.com.suryah.recurringclass` package
   - Create `RecurringClass.java` entity (id, dayOfWeek as `java.time.DayOfWeek`, startTime as `LocalTime`, durationMin, classType ManyToOne, capacity, active)
   - Create `RecurringClassRepository.java` (JpaRepository + findByActiveTrue, findByDayOfWeekAndActiveTrue)
-- [ ] 2.2 Create `br.com.suryah.fixedenrollment` package
+- [x] 2.2 Create `br.com.suryah.fixedenrollment` package
   - Create `FixedEnrollment.java` entity (id, recurringClass ManyToOne, student ManyToOne, active, createdAt)
   - Create `FixedEnrollmentRepository.java` (JpaRepository + findByRecurringClassIdAndActiveTrue, existsByRecurringClassIdAndStudentId)
-- [ ] 2.3 Add `recurringClass` field to `ClassSession`
+- [x] 2.3 Add `recurringClass` field to `ClassSession`
   - `@ManyToOne(fetch = FetchType.LAZY)` nullable, `@JoinColumn(name = "recurring_class_id")`
-- [ ] 2.4 Create `V3__recurring_class_and_fixed_enrollment.sql` migration
+- [x] 2.4 Create `V3__recurring_class_and_fixed_enrollment.sql` migration
   - `CREATE TABLE recurring_class` with all columns and unique constraint `(day_of_week, start_time, class_type_id)`
   - `CREATE TABLE fixed_enrollment` with all columns and unique constraint `(recurring_class_id, student_id)`
   - `ALTER TABLE class_session ADD COLUMN recurring_class_id BIGINT REFERENCES recurring_class (id)`
   - Insert admin user: `INSERT INTO student (name, email, phone, age, plan_type, password_hash, role, active) VALUES (...)` using `ADMIN_EMAIL` and `ADMIN_PASSWORD_HASH` env vars (or sensible defaults for dev)
-- [ ] 2.5 Verify build passes: `mvn compile`
+- [x] 2.5 Verify build passes: `mvn compile`
 
 ---
 
@@ -72,22 +72,22 @@ Create `RecurringClass` and `FixedEnrollment` entities, add `recurringClass` rel
 
 Add Spring Security and JWT dependencies, create the security configuration and JWT filter.
 
-- [ ] 3.1 Add dependencies to `pom.xml`
+- [x] 3.1 Add dependencies to `pom.xml`
   - `spring-boot-starter-security`
   - `jjwt-api` 0.12.6
   - `jjwt-impl` 0.12.6 (runtime)
   - `jjwt-jackson` 0.12.6 (runtime)
-- [ ] 3.2 Create `br.com.suryah.auth` package
+- [x] 3.2 Create `br.com.suryah.auth` package
   - Create `JwtService.java` — `generateToken(Long studentId, String role)`, `validateToken(String token)`, `extractStudentId(String token)`, `extractRole(String token)` using jjwt with a configurable secret key (from `jwt.secret` property)
   - Create `JwtAuthenticationFilter.java` — extends `OncePerRequestFilter`, extracts Bearer token from Authorization header, validates via `JwtService`, sets `Authentication` in `SecurityContextHolder`
-- [ ] 3.3 Create `SecurityConfig.java`
+- [x] 3.3 Create `SecurityConfig.java`
   - `SecurityFilterChain` bean: permit `/api/auth/**`, authenticate all others, add JWT filter before `UsernamePasswordAuthenticationFilter`, disable CSRF, stateless session
   - `PasswordEncoder` bean: `BCryptPasswordEncoder`
   - Enable `@EnableMethodSecurity` for `@PreAuthorize` support
-- [ ] 3.4 Add JWT config to `application.yml`
+- [x] 3.4 Add JWT config to `application.yml`
   - `jwt.secret` property (default to a dev value, override via env var for prod)
   - `jwt.expiration-hours` (default 24)
-- [ ] 3.5 Verify build passes: `mvn compile`
+- [x] 3.5 Verify build passes: `mvn compile`
 
 ---
 

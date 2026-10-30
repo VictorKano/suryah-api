@@ -1,6 +1,7 @@
 package br.com.suryah.classsession;
 
 import br.com.suryah.classtype.ClassType;
+import br.com.suryah.recurringclass.RecurringClass;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -22,6 +23,10 @@ public class ClassSession {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "class_type_id")
     private ClassType classType;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "recurring_class_id")
+    private RecurringClass recurringClass;
 
     @Column(name = "start_datetime", nullable = false)
     private OffsetDateTime startDateTime;

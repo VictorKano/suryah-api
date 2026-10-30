@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface ClassTypeRepository extends JpaRepository<ClassType, Long> {
     List<ClassType> findByActiveTrueOrderByName();
+    boolean existsByName(String name);
 }

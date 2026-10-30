@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16
+    container_name: suryah-db
+    environment:
+      POSTGRES_DB: suryah
+      POSTGRES_USER: suryah
+      POSTGRES_PASSWORD: suryah
+    ports:
+      - "5432:5432"
+    volumes:
+      - suryah-data:/var/lib/postgresql/data
+
+volumes:
+  suryah-data:

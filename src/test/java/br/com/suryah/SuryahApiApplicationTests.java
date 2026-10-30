@@ -1,6 +1,6 @@
 package br.com.suryah;
 
-import br.com.suryah.tipoaula.TipoAulaRepository;
+import br.com.suryah.classtype.ClassTypeRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -20,10 +20,10 @@ class SuryahApiApplicationTests {
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16");
 
     @Autowired
-    TipoAulaRepository tipoAulaRepository;
+    ClassTypeRepository classTypeRepository;
 
     @Test
     void contextoSobeEMigrationInseriuTiposDeAula() {
-        assertThat(tipoAulaRepository.findAll()).hasSizeGreaterThanOrEqualTo(3);
+        assertThat(classTypeRepository.findAll()).hasSizeGreaterThanOrEqualTo(3);
     }
 }

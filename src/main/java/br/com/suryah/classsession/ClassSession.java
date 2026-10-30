@@ -1,6 +1,6 @@
-package br.com.suryah.aula;
+package br.com.suryah.classsession;
 
-import br.com.suryah.tipoaula.TipoAula;
+import br.com.suryah.classtype.ClassType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -9,32 +9,32 @@ import lombok.Setter;
 import java.time.OffsetDateTime;
 
 @Entity
-@Table(name = "aula")
+@Table(name = "class_session")
 @Getter
 @Setter
 @NoArgsConstructor
-public class Aula {
+public class ClassSession {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "tipo_aula_id")
-    private TipoAula tipoAula;
+    @JoinColumn(name = "class_type_id")
+    private ClassType classType;
 
-    @Column(name = "data_hora_inicio", nullable = false)
-    private OffsetDateTime dataHoraInicio;
+    @Column(name = "start_datetime", nullable = false)
+    private OffsetDateTime startDateTime;
 
-    @Column(name = "duracao_min", nullable = false)
-    private int duracaoMin;
+    @Column(name = "duration_min", nullable = false)
+    private int durationMin;
 
     @Column(nullable = false)
-    private int capacidade;
+    private int capacity;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private StatusAula status = StatusAula.ATIVA;
+    private ClassStatus status = ClassStatus.ACTIVE;
 
     @Version
     private Long version;

@@ -14,11 +14,11 @@ public interface ClassSessionRepository extends JpaRepository<ClassSession, Long
 
     @Query("""
            select a from ClassSession a join fetch a.classType
-           where a.startDateTime >= :de and a.startDateTime < :ate
+           where a.startDateTime >= :from and a.startDateTime < :to
              and a.status = br.com.suryah.classsession.ClassStatus.ACTIVE
            order by a.startDateTime
            """)
-    List<ClassSession> findAgenda(@Param("de") OffsetDateTime de, @Param("ate") OffsetDateTime ate);
+    List<ClassSession> findUpcoming(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
 
     /** Use within the booking transaction to serialize bookings for the same class session. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

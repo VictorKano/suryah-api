@@ -3,6 +3,7 @@ package br.com.suryah.recurringclass;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.DayOfWeek;
+import java.time.LocalTime;
 import java.util.List;
 
 public interface RecurringClassRepository extends JpaRepository<RecurringClass, Long> {
@@ -10,4 +11,8 @@ public interface RecurringClassRepository extends JpaRepository<RecurringClass, 
     List<RecurringClass> findByActiveTrue();
 
     List<RecurringClass> findByDayOfWeekAndActiveTrue(DayOfWeek dayOfWeek);
+
+    List<RecurringClass> findByActiveTrueOrderByDayOfWeekAscStartTimeAsc();
+
+    boolean existsByDayOfWeekAndStartTimeAndClassTypeId(DayOfWeek dayOfWeek, LocalTime startTime, Long classTypeId);
 }

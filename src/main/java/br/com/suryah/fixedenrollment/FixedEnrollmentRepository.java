@@ -8,5 +8,5 @@ public interface FixedEnrollmentRepository extends JpaRepository<FixedEnrollment
 
     List<FixedEnrollment> findByRecurringClassIdAndActiveTrue(Long recurringClassId);
 
-    boolean existsByRecurringClassIdAndStudentId(Long recurringClassId, Long studentId);
+    boolean existsByRecurringClassIdAndStudentIdAndActiveTrue(Long recurringClassId, Long studentId);
 }

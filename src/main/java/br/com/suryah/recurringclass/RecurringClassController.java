@@ -17,11 +17,14 @@ public class RecurringClassController {
 
     private final RecurringClassRepository recurringClassRepository;
     private final ClassTypeRepository classTypeRepository;
+    private final SessionGenerationService sessionGenerationService;
 
     public RecurringClassController(RecurringClassRepository recurringClassRepository,
-                                    ClassTypeRepository classTypeRepository) {
+                                    ClassTypeRepository classTypeRepository,
+                                    SessionGenerationService sessionGenerationService) {
         this.recurringClassRepository = recurringClassRepository;
         this.classTypeRepository = classTypeRepository;
+        this.sessionGenerationService = sessionGenerationService;
     }
 
     @GetMapping
@@ -84,6 +87,12 @@ public class RecurringClassController {
 
         RecurringClass saved = recurringClassRepository.save(entity);
         return toResponse(saved);
+    }
+
+    @PostMapping("/generate")
+    @PreAuthorize("hasRole('ADMIN')")
+    public GenerationSummary generate(@Valid @RequestBody GenerateSessionsRequest request) {
+        return sessionGenerationService.generateSessions(request.from(), request.to());
     }
 
     @DeleteMapping("/{id}")

@@ -20,6 +20,9 @@ public interface ClassSessionRepository extends JpaRepository<ClassSession, Long
            """)
     List<ClassSession> findUpcoming(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
 
+    /** Idempotency check: returns true if a session already exists for the given recurring class and start time. */
+    boolean existsByRecurringClassIdAndStartDateTime(Long recurringClassId, OffsetDateTime startDateTime);
+
     /** Use within the booking transaction to serialize bookings for the same class session. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from ClassSession a where a.id = :id")

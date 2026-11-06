@@ -5,6 +5,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -26,6 +27,7 @@ public class BookingController {
     @PostMapping("/api/class-sessions/{id}/bookings")
     @PreAuthorize("hasRole('STUDENT')")
     @ResponseStatus(HttpStatus.CREATED)
+    @Transactional
     public BookingResponse book(@PathVariable Long id, Authentication authentication) {
         Long studentId = resolveStudentId(authentication);
         try {
@@ -60,11 +62,66 @@ public class BookingController {
      */
     @GetMapping("/api/bookings")
     @PreAuthorize("hasRole('STUDENT')")
+    @Transactional(readOnly = true)
     public List<BookingResponse> listOwn(Authentication authentication) {
         Long studentId = resolveStudentId(authentication);
         return bookingRepository.findByStudentIdOrderByCreatedAtDesc(studentId).stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    /**
+     * List all bookings for a specific session (admin only).
+     * Ordered by status (CONFIRMED first, then WAITLIST) then by booking time.
+     */
+    @GetMapping("/api/class-sessions/{id}/bookings")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional(readOnly = true)
+    public List<SessionBookingResponse> listForSession(@PathVariable Long id) {
+        return bookingRepository
+                .findByClassSessionIdOrderByStatusAscCreatedAtAsc(id)
+                .stream()
+                .filter(b -> b.getStatus() != BookingStatus.CANCELLED)
+                .map(b -> new SessionBookingResponse(
+                        b.getId(),
+                        b.getStudent().getId(),
+                        b.getStudent().getName(),
+                        b.getStudent().getEmail(),
+                        b.getStatus(),
+                        b.getAttended(),
+                        b.getCreatedAt()))
+                .toList();
+    }
+
+    /**
+     * Mark or unmark a student's attendance for a session (admin only).
+     * PATCH /api/bookings/{id}/attendance with body {"attended": true|false|null}
+     */
+    @PatchMapping("/api/bookings/{id}/attendance")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public SessionBookingResponse markAttendance(
+            @PathVariable Long id,
+            @RequestBody AttendanceRequest request) {
+        Booking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+
+        if (booking.getStatus() != BookingStatus.CONFIRMED) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Attendance can only be marked for CONFIRMED bookings");
+        }
+
+        booking.setAttended(request.attended());
+        Booking saved = bookingRepository.save(booking);
+
+        return new SessionBookingResponse(
+                saved.getId(),
+                saved.getStudent().getId(),
+                saved.getStudent().getName(),
+                saved.getStudent().getEmail(),
+                saved.getStatus(),
+                saved.getAttended(),
+                saved.getCreatedAt());
     }
 
     // --- helpers ---

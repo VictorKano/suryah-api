@@ -36,7 +36,7 @@ public class AuthService {
         }
 
         if (studentRepository.existsByEmail(request.email())) {
-            throw new IllegalStateException("Email already registered: " + request.email());
+            throw new IllegalStateException("Este e-mail j\u00e1 est\u00e1 cadastrado.");
         }
 
         Student student = new Student();

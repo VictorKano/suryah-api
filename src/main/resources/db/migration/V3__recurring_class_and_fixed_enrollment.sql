@@ -68,7 +68,7 @@ VALUES (
     30,
     'PRIVATE',
     coalesce(current_setting('app.admin_password_hash', true),
-             '$2a$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.'),
+             '$2a$12$ZnN22Fkhe50OVk/t6ZXgMeDJbtYoy534SXC0pu.7SIiXp56N.Oyny'),
     'ADMIN',
     TRUE
 );

@@ -17,6 +17,29 @@ spring:
     time-zone: America/Sao_Paulo
   main:
     lazy-initialization: false
+  # ── E-mail (Gmail SMTP) ────────────────────────────────────────────────────
+  # Para usar:
+  #   1. Acesse myaccount.google.com → Segurança → Verificação em duas etapas (ativar)
+  #   2. Acesse myaccount.google.com → Segurança → Senhas de app → gere uma senha
+  #   3. Defina MAIL_USERNAME=seu@gmail.com e MAIL_PASSWORD=<senha-de-app>
+  # Para desativar o envio em dev, deixe MAIL_ENABLED=false (padrão).
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
+mail:
+  enabled: ${MAIL_ENABLED:false}
+  from: ${MAIL_FROM:${spring.mail.username}}
+  studio-name: ${MAIL_STUDIO_NAME:Suryah}
 
 server:
   port: ${PORT:8080}
@@ -28,5 +51,16 @@ management:
         include: health,info
 
 jwt:
-  secret: ${JWT_SECRET:suryah-dev-secret-key-must-be-at-least-32-chars-long}
+  # No default — the app will fail to start if JWT_SECRET is not set.
+  # Generate one with: openssl rand -base64 48
+  # For local dev you can set: set JWT_SECRET=any-string-at-least-32-chars-long
+  secret: ${JWT_SECRET}
   expiration-hours: ${JWT_EXPIRATION_HOURS:24}
+
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# No default — must be set explicitly. For local dev:
+#   set CORS_ALLOWED_ORIGINS=*
+# In production:
+#   set CORS_ALLOWED_ORIGINS=https://app.suryah.com.br
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS}

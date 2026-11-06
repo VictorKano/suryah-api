@@ -3,25 +3,56 @@ package br.com.suryah.booking;
 import br.com.suryah.classsession.ClassSession;
 import br.com.suryah.classsession.ClassSessionRepository;
 import br.com.suryah.classsession.ClassStatus;
+import br.com.suryah.email.EmailService;
 import br.com.suryah.student.Student;
 import br.com.suryah.student.StudentRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.FormatStyle;
+import java.time.temporal.ChronoUnit;
+import java.util.Locale;
+
 @Service
 public class BookingService {
+
+    /** Students cannot cancel a booking within this many hours of the class start. */
+    private static final long CANCELLATION_CUTOFF_HOURS = 12;
+
+    private static final ZoneId STUDIO_ZONE = ZoneId.of("America/Sao_Paulo");
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter
+            .ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+            .withLocale(new Locale("pt", "BR"))
+            .withZone(STUDIO_ZONE);
 
     private final BookingRepository bookingRepository;
     private final ClassSessionRepository classSessionRepository;
     private final StudentRepository studentRepository;
+    private final EmailService emailService;
 
     public BookingService(BookingRepository bookingRepository,
                           ClassSessionRepository classSessionRepository,
-                          StudentRepository studentRepository) {
+                          StudentRepository studentRepository,
+                          EmailService emailService) {
         this.bookingRepository = bookingRepository;
         this.classSessionRepository = classSessionRepository;
         this.studentRepository = studentRepository;
+        this.emailService = emailService;
+    }
+
+    private BookingSnapshot toSnapshot(Booking booking) {
+        return new BookingSnapshot(
+                booking.getStudent().getName(),
+                booking.getStudent().getEmail(),
+                booking.getClassSession().getClassType().getName(),
+                DATE_FMT.format(booking.getClassSession().getStartDateTime()),
+                booking.getClassSession().getDurationMin()
+        );
     }
 
     /**
@@ -64,12 +95,29 @@ public class BookingService {
                 ? BookingStatus.CONFIRMED
                 : BookingStatus.WAITLIST;
 
-        Booking booking = new Booking();
-        booking.setClassSession(session);
-        booking.setStudent(student);
-        booking.setStatus(newStatus);
+        // If a CANCELLED booking already exists for this student+session, reactivate
+        // it rather than inserting a new row (which would violate the unique constraint).
+        Booking booking = bookingRepository
+                .findByClassSessionIdAndStudentId(sessionId, studentId)
+                .orElseGet(() -> {
+                    Booking b = new Booking();
+                    b.setClassSession(session);
+                    b.setStudent(student);
+                    return b;
+                });
 
-        return bookingRepository.save(booking);
+        booking.setStatus(newStatus);
+        Booking saved = bookingRepository.save(booking);
+
+        // Build snapshot while session is open, then fire async email
+        BookingSnapshot snap = toSnapshot(saved);
+        if (newStatus == BookingStatus.CONFIRMED) {
+            emailService.sendBookingConfirmed(snap);
+        } else {
+            emailService.sendWaitlistConfirmed(snap);
+        }
+
+        return saved;
     }
 
     /**
@@ -90,11 +138,20 @@ public class BookingService {
                 .orElseThrow(() -> new EntityNotFoundException("Booking not found: " + bookingId));
 
         if (!booking.getStudent().getId().equals(studentId)) {
-            throw new IllegalStateException("Booking does not belong to this student.");
+            throw new EntityNotFoundException("Booking not found: " + bookingId);
         }
 
         if (booking.getStatus() == BookingStatus.CANCELLED) {
             throw new IllegalStateException("Booking is already cancelled.");
+        }
+
+        // Enforce cancellation cutoff: students cannot cancel within 12 hours of class start
+        OffsetDateTime sessionStart = booking.getClassSession().getStartDateTime();
+        OffsetDateTime cutoff = sessionStart.minus(CANCELLATION_CUTOFF_HOURS, ChronoUnit.HOURS);
+        if (OffsetDateTime.now(ZoneOffset.UTC).isAfter(cutoff)) {
+            throw new IllegalStateException(
+                    "N\u00e3o \u00e9 poss\u00edvel cancelar com menos de "
+                    + CANCELLATION_CUTOFF_HOURS + " horas de anteced\u00eancia.");
         }
 
         // Acquire pessimistic write lock on the session before mutating booking state
@@ -114,6 +171,7 @@ public class BookingService {
                     .ifPresent(waitlisted -> {
                         waitlisted.setStatus(BookingStatus.CONFIRMED);
                         bookingRepository.save(waitlisted);
+                        emailService.sendWaitlistPromoted(toSnapshot(waitlisted));
                     });
         }
 

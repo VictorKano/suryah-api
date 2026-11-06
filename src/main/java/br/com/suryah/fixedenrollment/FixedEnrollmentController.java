@@ -8,8 +8,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 public class FixedEnrollmentController {
@@ -31,6 +33,7 @@ public class FixedEnrollmentController {
      */
     @GetMapping("/api/recurring-classes/{id}/fixed-enrollments")
     @PreAuthorize("hasRole('ADMIN')")
+    @Transactional(readOnly = true)
     public List<FixedEnrollmentResponse> list(@PathVariable Long id) {
         recurringClassRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Recurring class not found"));
@@ -47,6 +50,7 @@ public class FixedEnrollmentController {
     @PostMapping("/api/recurring-classes/{id}/fixed-enrollments")
     @PreAuthorize("hasRole('ADMIN')")
     @ResponseStatus(HttpStatus.CREATED)
+    @Transactional
     public FixedEnrollmentResponse enroll(@PathVariable Long id,
                                           @RequestBody FixedEnrollmentRequest request) {
         RecurringClass recurringClass = recurringClassRepository.findById(id)
@@ -66,6 +70,25 @@ public class FixedEnrollmentController {
         if (fixedEnrollmentRepository.existsByRecurringClassIdAndStudentIdAndActiveTrue(id, request.studentId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Student is already enrolled as a fixed student in this recurring class");
+        }
+
+        // Block enrollment if already at capacity
+        long currentCount = fixedEnrollmentRepository.countByRecurringClassIdAndActiveTrue(id);
+        if (currentCount >= recurringClass.getCapacity()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "N\u00e3o \u00e9 poss\u00edvel adicionar mais alunos fixos: capacidade m\u00e1xima de "
+                    + recurringClass.getCapacity() + " j\u00e1 atingida.");
+        }
+
+        // If a soft-deleted enrollment exists for this pair, reactivate it
+        // instead of inserting a duplicate (which would violate the unique constraint).
+        Optional<FixedEnrollment> existing = fixedEnrollmentRepository
+                .findByRecurringClassIdAndStudentId(id, request.studentId());
+        if (existing.isPresent()) {
+            FixedEnrollment enrollment = existing.get();
+            enrollment.setActive(true);
+            FixedEnrollment saved = fixedEnrollmentRepository.save(enrollment);
+            return toResponse(saved);
         }
 
         FixedEnrollment enrollment = FixedEnrollment.builder()

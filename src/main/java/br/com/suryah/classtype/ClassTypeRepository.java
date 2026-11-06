@@ -5,6 +5,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 
 public interface ClassTypeRepository extends JpaRepository<ClassType, Long> {
-    List<ClassType> findByActiveTrueOrderByName();
+    List<ClassType> findAllByOrderByName();
     boolean existsByName(String name);
 }

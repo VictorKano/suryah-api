@@ -79,8 +79,10 @@ public class SessionGenerationService {
                         .atZone(STUDIO_ZONE)
                         .toOffsetDateTime();
 
-                // Idempotency: skip if a session already exists for this slot
-                if (classSessionRepository.existsByRecurringClassIdAndStartDateTime(rc.getId(), startDateTime)) {
+                // Idempotency: skip if an ACTIVE session already exists for this slot.
+                // CANCELLED sessions are ignored so the slot can be regenerated.
+                if (classSessionRepository.existsByRecurringClassIdAndStartDateTimeAndStatus(
+                        rc.getId(), startDateTime, ClassStatus.ACTIVE)) {
                     sessionsSkipped++;
                     continue;
                 }

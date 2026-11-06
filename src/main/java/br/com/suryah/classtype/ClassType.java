@@ -21,7 +21,4 @@ public class ClassType {
 
     @Column(name = "description")
     private String description;
-
-    @Column(name = "active", nullable = false)
-    private boolean active = true;
 }

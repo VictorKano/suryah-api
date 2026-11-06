@@ -38,12 +38,13 @@ ALTER TABLE class_type RENAME COLUMN nome      TO name;
 ALTER TABLE class_type RENAME COLUMN descricao TO description;
 ALTER TABLE class_type RENAME COLUMN ativo     TO active;
 
--- student (was aluno) -- email, role and ativo keep their column names
+-- student (was aluno) -- email and role keep their column names
 ALTER TABLE student RENAME COLUMN nome       TO name;
 ALTER TABLE student RENAME COLUMN telefone   TO phone;
 ALTER TABLE student RENAME COLUMN idade      TO age;
 ALTER TABLE student RENAME COLUMN tipo_plano TO plan_type;
 ALTER TABLE student RENAME COLUMN senha_hash TO password_hash;
+ALTER TABLE student RENAME COLUMN ativo      TO active;
 ALTER TABLE student RENAME COLUMN criado_em  TO created_at;
 
 -- class_session (was aula) -- status and version keep their column names

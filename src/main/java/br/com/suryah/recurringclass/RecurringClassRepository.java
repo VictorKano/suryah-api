@@ -14,5 +14,9 @@ public interface RecurringClassRepository extends JpaRepository<RecurringClass, 
 
     List<RecurringClass> findByActiveTrueOrderByDayOfWeekAscStartTimeAsc();
 
+    List<RecurringClass> findAllByOrderByDayOfWeekAscStartTimeAsc();
+
+    boolean existsByClassTypeId(Long classTypeId);
+
     boolean existsByDayOfWeekAndStartTimeAndClassTypeId(DayOfWeek dayOfWeek, LocalTime startTime, Long classTypeId);
 }

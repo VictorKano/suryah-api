@@ -40,7 +40,7 @@ public class Student {
     @Column(nullable = false)
     private Role role = Role.STUDENT;
 
-    @Column(nullable = false)
+    @Column(name = "active", nullable = false)
     private boolean ativo = true;
 
     @Column(name = "created_at", nullable = false, updatable = false)

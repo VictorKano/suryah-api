@@ -33,6 +33,16 @@ public class Booking {
     @Column(nullable = false)
     private BookingStatus status = BookingStatus.CONFIRMED;
 
+    /** Attendance mark set by an admin after the session.
+     *  null = not yet marked, true = attended, false = no-show. */
+    @Column(nullable = true)
+    private Boolean attended;
+
+    /** Set to true once the 12-hour reminder e-mail has been sent.
+     *  Prevents duplicate reminders if the scheduler runs multiple times. */
+    @Column(name = "reminder_sent", nullable = true)
+    private Boolean reminderSent;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
 }

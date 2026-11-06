@@ -6,3 +6,4 @@ target/
 *.log
 .env
 bin/
+node_modules/

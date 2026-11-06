@@ -5,6 +5,14 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/suryah}
     username: ${DB_USER:suryah}
     password: ${DB_PASSWORD:suryah}
+    hikari:
+      # Neon requires SSL — these properties ensure the connection works with
+      # both local PostgreSQL and Neon's pooled/direct endpoints.
+      data-source-properties:
+        sslmode: require
+        channel_binding: disable
+        # Neon uses pgbouncer in transaction mode; disable prepared statements
+        prepareThreshold: 0
   jpa:
     open-in-view: false
     hibernate:

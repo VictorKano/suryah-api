@@ -13,9 +13,10 @@ import type { PlanType } from '../types'
 interface Props {
   open: boolean
   onClose: () => void
+  adminMode?: boolean // true = show only the password section
 }
 
-export function ProfileModal({ open, onClose }: Props) {
+export function ProfileModal({ open, onClose, adminMode = false }: Props) {
   const { profile, refreshProfile } = useAuth()
   const { toast } = useToast()
 
@@ -93,9 +94,11 @@ export function ProfileModal({ open, onClose }: Props) {
     'w-full rounded-lg border border-sage-200 px-3 py-2 text-sage-800 outline-none focus:border-sage-500 focus:ring-2 focus:ring-sage-200'
 
   return (
-    <Modal open={open} onClose={onClose} title="Meu Perfil">
+    <Modal open={open} onClose={onClose} title={adminMode ? 'Alterar Senha' : 'Meu Perfil'}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
+        {!adminMode && (
+          <>
+            <div>
           <label className="mb-1 block text-sm font-medium text-sage-700">Nome</label>
           <input
             type="text"
@@ -158,11 +161,13 @@ export function ProfileModal({ open, onClose }: Props) {
             ))}
           </select>
         </div>
+          </>
+        )}
 
         {/* Password section */}
-        <div className="border-t border-sage-100 pt-4">
+        <div className={adminMode ? '' : 'border-t border-sage-100 pt-4'}>
           <p className="mb-3 text-sm font-medium text-sage-600">
-            Alterar senha{' '}
+            {adminMode ? 'Nova senha' : 'Alterar senha'}{' '}
             <span className="font-normal text-sage-400">(opcional)</span>
           </p>
           <div className="space-y-3">

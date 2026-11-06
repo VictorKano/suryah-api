@@ -130,12 +130,12 @@ export function Navbar() {
                     <p className="truncate text-sm font-medium text-sage-800">{displayName}</p>
                     {profile?.email && <p className="truncate text-xs text-sage-400">{profile.email}</p>}
                   </div>
-                  {role === 'STUDENT' && (
+                  {(role === 'STUDENT' || role === 'ADMIN') && (
                     <button onClick={handleProfile} className="flex w-full items-center gap-2 px-4 py-2 text-sm text-sage-700 hover:bg-sage-50">
                       <svg className="h-4 w-4 text-sage-400" viewBox="0 0 20 20" fill="currentColor">
                         <path d="M10 10a4 4 0 100-8 4 4 0 000 8zm-7 8a7 7 0 0114 0H3z" />
                       </svg>
-                      Meu Perfil
+                      {role === 'ADMIN' ? 'Alterar Senha' : 'Meu Perfil'}
                     </button>
                   )}
                   <button onClick={handleLogout} className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50">
@@ -196,12 +196,12 @@ export function Navbar() {
 
             {/* Profile + logout */}
             <div className="space-y-1">
-              {role === 'STUDENT' && (
+              {(role === 'STUDENT' || role === 'ADMIN') && (
                 <button onClick={handleProfile} className="flex w-full items-center gap-2 rounded-lg px-4 py-2.5 text-sm text-sage-700 hover:bg-sage-50">
                   <svg className="h-4 w-4 text-sage-400" viewBox="0 0 20 20" fill="currentColor">
                     <path d="M10 10a4 4 0 100-8 4 4 0 000 8zm-7 8a7 7 0 0114 0H3z" />
                   </svg>
-                  Meu Perfil
+                  {role === 'ADMIN' ? 'Alterar Senha' : 'Meu Perfil'}
                 </button>
               )}
               <button onClick={handleLogout} className="flex w-full items-center gap-2 rounded-lg px-4 py-2.5 text-sm text-red-600 hover:bg-red-50">
@@ -216,8 +216,12 @@ export function Navbar() {
       </header>
 
       {/* Profile modal */}
-      {role === 'STUDENT' && (
-        <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
+      {(role === 'STUDENT' || role === 'ADMIN') && (
+        <ProfileModal
+          open={profileOpen}
+          onClose={() => setProfileOpen(false)}
+          adminMode={role === 'ADMIN'}
+        />
       )}
     </>
   )

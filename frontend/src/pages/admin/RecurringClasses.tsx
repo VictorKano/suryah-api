@@ -248,7 +248,52 @@ export function RecurringClassesAdmin() {
           Nenhuma aula recorrente cadastrada.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-sage-100 bg-white shadow-sm">
+        <>
+          {/* ── Mobile: card list (hidden on md+) ── */}
+          <div className="flex flex-col gap-3 md:hidden">
+            {items.map((rc) => (
+              <div
+                key={rc.id}
+                className={`rounded-xl border border-sage-100 bg-white p-4 shadow-sm ${!rc.active ? 'opacity-60' : ''}`}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-sage-800">{rc.classTypeName}</p>
+                    <p className="text-sm text-sage-500">
+                      {DAY_OF_WEEK_LABELS[rc.dayOfWeek]} · {fromLocalTimeString(rc.startTime)} · {rc.durationMin} min · {rc.capacity} vagas
+                    </p>
+                  </div>
+                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                    rc.active ? 'bg-green-100 text-green-800' : 'bg-sage-100 text-sage-500'
+                  }`}>
+                    {rc.active ? 'Ativa' : 'Inativa'}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1 border-t border-sage-50">
+                  <button onClick={() => openEnrollments(rc)} className="rounded-lg border border-sand-300 px-3 py-1.5 text-xs text-sand-500 hover:bg-sand-100">
+                    Alunos Fixos
+                  </button>
+                  <button onClick={() => openEdit(rc)} className="rounded-lg border border-sage-200 px-3 py-1.5 text-xs text-sage-600 hover:bg-sage-50">
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => handleToggleActive(rc)}
+                    className={`rounded-lg border px-3 py-1.5 text-xs transition ${
+                      rc.active ? 'border-amber-200 text-amber-600 hover:bg-amber-50' : 'border-green-200 text-green-600 hover:bg-green-50'
+                    }`}
+                  >
+                    {rc.active ? 'Desativar' : 'Ativar'}
+                  </button>
+                  <button onClick={() => setDeleteId(rc.id)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50">
+                    Excluir
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Desktop: table (hidden below md) ── */}
+          <div className="hidden md:block overflow-hidden rounded-xl border border-sage-100 bg-white shadow-sm">
           <table className="w-full text-left">
             <thead className="border-b border-sage-100 bg-sage-50 text-sm text-sage-500">
               <tr>
@@ -314,7 +359,8 @@ export function RecurringClassesAdmin() {
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
 
       {/* Create / Edit modal */}

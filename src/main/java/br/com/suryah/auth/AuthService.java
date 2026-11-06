@@ -25,9 +25,6 @@ public class AuthService {
         if (request.name() == null || request.name().isBlank()) {
             throw new IllegalArgumentException("Name is required");
         }
-        if (request.email() == null || request.email().isBlank()) {
-            throw new IllegalArgumentException("Email is required");
-        }
         if (request.password() == null || request.password().isBlank()) {
             throw new IllegalArgumentException("Password is required");
         }
@@ -35,13 +32,15 @@ public class AuthService {
             throw new IllegalArgumentException("Plan type is required");
         }
 
-        if (studentRepository.existsByEmail(request.email())) {
+        // Email is optional — only check uniqueness when provided
+        if (request.email() != null && !request.email().isBlank()
+                && studentRepository.existsByEmail(request.email())) {
             throw new IllegalStateException("Este e-mail j\u00e1 est\u00e1 cadastrado.");
         }
 
         Student student = new Student();
         student.setName(request.name());
-        student.setEmail(request.email());
+        student.setEmail(request.email() != null && !request.email().isBlank() ? request.email() : null);
         student.setPhone(request.phone());
         student.setAge(request.age());
         student.setPasswordHash(passwordEncoder.encode(request.password()));

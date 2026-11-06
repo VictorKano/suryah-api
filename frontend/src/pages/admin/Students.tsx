@@ -265,8 +265,11 @@ export function StudentsAdmin() {
             <input required value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} className={inputClass} />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-sage-700">E-mail</label>
-            <input type="email" required value={createForm.email} onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })} className={`${inputClass} ${createFieldErrors.email ? 'border-red-300' : ''}`} />
+            <label className="mb-1 block text-sm font-medium text-sage-700">
+              E-mail
+              <span className="ml-1 font-normal text-sage-400">(opcional)</span>
+            </label>
+            <input type="email" value={createForm.email} onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })} className={`${inputClass} ${createFieldErrors.email ? 'border-red-300' : ''}`} />
             {createFieldErrors.email && <p className="mt-1 text-xs text-red-500">{createFieldErrors.email}</p>}
           </div>
           <div>
@@ -275,12 +278,18 @@ export function StudentsAdmin() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-sm font-medium text-sage-700">Telefone</label>
+              <label className="mb-1 block text-sm font-medium text-sage-700">
+                Telefone
+                <span className="ml-1 font-normal text-sage-400">(opcional)</span>
+              </label>
               <input type="tel" value={createForm.phone} onChange={(e) => setCreateForm({ ...createForm, phone: maskPhone(e.target.value) })} placeholder="(11) 91234-5678" className={`${inputClass} ${createFieldErrors.phone ? 'border-red-300' : ''}`} />
               {createFieldErrors.phone && <p className="mt-1 text-xs text-red-500">{createFieldErrors.phone}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-sage-700">Idade</label>
+              <label className="mb-1 block text-sm font-medium text-sage-700">
+                Idade
+                <span className="ml-1 font-normal text-sage-400">(opcional)</span>
+              </label>
               <input type="number" min={1} max={119} value={createForm.age} onChange={(e) => setCreateForm({ ...createForm, age: e.target.value })} className={inputClass} />
             </div>
           </div>

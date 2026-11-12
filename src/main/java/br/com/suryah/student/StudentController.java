@@ -1,6 +1,8 @@
 package br.com.suryah.student;
 
 import br.com.suryah.booking.BookingRepository;
+import br.com.suryah.plan.Plan;
+import br.com.suryah.plan.PlanRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -17,14 +19,15 @@ public class StudentController {
 
     private final StudentRepository studentRepository;
     private final BookingRepository bookingRepository;
+    private final PlanRepository planRepository;
 
     public StudentController(StudentRepository studentRepository,
-                              BookingRepository bookingRepository) {
+                              BookingRepository bookingRepository,
+                              PlanRepository planRepository) {
         this.studentRepository = studentRepository;
         this.bookingRepository = bookingRepository;
+        this.planRepository = planRepository;
     }
-
-    // ── Lightweight list (fixed-enrollment dropdown) ──────────────────────────
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -38,8 +41,6 @@ public class StudentController {
                 .toList();
     }
 
-    // ── Full detail list (admin Alunos page) ──────────────────────────────────
-
     @GetMapping("/details")
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional(readOnly = true)
@@ -50,8 +51,6 @@ public class StudentController {
         return students.stream().map(this::toDetail).toList();
     }
 
-    // ── Edit student (admin) ──────────────────────────────────────────────────
-
     @PatchMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
@@ -60,38 +59,34 @@ public class StudentController {
         Student student = studentRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Student not found"));
 
-        if (request.name() != null && !request.name().isBlank()) {
-            student.setName(request.name());
-        }
+        if (request.name() != null && !request.name().isBlank()) student.setName(request.name());
         if (request.email() != null && !request.email().isBlank()
                 && !request.email().equalsIgnoreCase(student.getEmail())) {
-            if (studentRepository.existsByEmail(request.email())) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Este e-mail j\u00e1 est\u00e1 cadastrado.");
-            }
+            if (studentRepository.existsByEmail(request.email()))
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Este e-mail j\u00e1 est\u00e1 cadastrado.");
             student.setEmail(request.email());
         }
         if (request.phone() != null) student.setPhone(request.phone());
-        if (request.age()   != null) student.setAge(request.age());
+        if (request.age() != null) student.setAge(request.age());
         if (request.planType() != null) student.setPlanType(request.planType());
+        if (request.planId() != null) {
+            Plan plan = planRepository.findById(request.planId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Plan not found"));
+            student.setPlan(plan);
+        }
 
         return toDetail(studentRepository.save(student));
     }
 
-    // ── Toggle active / inactive ──────────────────────────────────────────────
-
     @PatchMapping("/{id}/active")
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
-    public StudentDetail setActive(@PathVariable Long id,
-                                   @RequestBody ActiveStudentRequest request) {
+    public StudentDetail setActive(@PathVariable Long id, @RequestBody ActiveStudentRequest request) {
         Student student = studentRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Student not found"));
         student.setAtivo(request.active());
         return toDetail(studentRepository.save(student));
     }
-
-    // ── Student booking history (admin) ───────────────────────────────────────
 
     @GetMapping("/{id}/bookings")
     @PreAuthorize("hasRole('ADMIN')")
@@ -99,36 +94,28 @@ public class StudentController {
     public List<StudentBookingEntry> bookingHistory(@PathVariable Long id) {
         studentRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Student not found"));
-
         return bookingRepository.findByStudentIdOrderByCreatedAtDesc(id).stream()
                 .map(b -> new StudentBookingEntry(
-                        b.getId(),
-                        b.getClassSession().getId(),
+                        b.getId(), b.getClassSession().getId(),
                         b.getClassSession().getClassType().getName(),
                         b.getClassSession().getStartDateTime(),
-                        b.getStatus(),
-                        b.getAttended(),
-                        b.getCreatedAt()
-                ))
+                        b.getStatus(), b.getAttended(), b.getCreatedAt()))
                 .toList();
     }
 
-    // ── helpers ───────────────────────────────────────────────────────────────
-
     private StudentDetail toDetail(Student s) {
+        Plan plan = s.getPlan();
         return new StudentDetail(
                 s.getId(), s.getName(), s.getEmail(), s.getPhone(),
-                s.getAge(), s.getPlanType(), s.isAtivo(), s.getCreatedAt());
+                s.getAge(), s.getPlanType(),
+                plan != null ? plan.getId() : null,
+                plan != null ? plan.getName() : null,
+                s.isAtivo(), s.getCreatedAt());
     }
 
-    /** Inner DTO for booking history entries. */
     public record StudentBookingEntry(
-            Long bookingId,
-            Long sessionId,
-            String classTypeName,
+            Long bookingId, Long sessionId, String classTypeName,
             OffsetDateTime startDateTime,
             br.com.suryah.booking.BookingStatus status,
-            Boolean attended,
-            OffsetDateTime createdAt
-    ) {}
+            Boolean attended, OffsetDateTime createdAt) {}
 }

@@ -38,6 +38,11 @@ public class Booking {
     @Column(nullable = true)
     private Boolean attended;
 
+    /** Historical price snapshot — set when attended=true based on the student's
+     *  plan price_per_attendance at that moment. Never recalculated retroactively. */
+    @Column(name = "price_per_attendance", nullable = true, precision = 10, scale = 2)
+    private java.math.BigDecimal pricePerAttendance;
+
     /** Set to true once the 12-hour reminder e-mail has been sent.
      *  Prevents duplicate reminders if the scheduler runs multiple times. */
     @Column(name = "reminder_sent", nullable = true)

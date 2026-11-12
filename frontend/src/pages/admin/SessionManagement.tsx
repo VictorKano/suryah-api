@@ -1,17 +1,37 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import {
+  startOfWeek, endOfWeek, addWeeks, subWeeks,
+  eachDayOfInterval, isSameDay, format, parseISO, isToday, isBefore,
+} from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 import { listClassSessions, updateClassSession, createAdHocSession } from '../../api/classSessions'
 import { listClassTypes } from '../../api/classTypes'
-import { listSessionBookings, markAttendance } from '../../api/bookings'
+import { listStudents } from '../../api/students'
+import { listSessionBookings, markAttendance, adminBookStudent } from '../../api/bookings'
 import { getErrorMessage } from '../../api/client'
-import { FullPageSpinner, Spinner } from '../../components/Spinner'
+import { Spinner } from '../../components/Spinner'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { BookingStatusBadge, ClassStatusBadge } from '../../components/Badge'
 import { Modal } from '../../components/Modal'
 import { useToast } from '../../components/Toast'
 import { formatDateTime, formatDuration } from '../../utils/format'
-import type { ClassSessionResponse, ClassStatus, ClassTypeResponse, SessionBookingResponse } from '../../types'
+import { STUDIO_TIMEZONE } from '../../utils/constants'
+import type {
+  ClassSessionResponse, ClassStatus, ClassTypeResponse,
+  SessionBookingResponse, StudentSummary,
+} from '../../types'
 
-// ── Attendance toggle component ───────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function sessionTime(iso: string): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: STUDIO_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parseISO(iso))
+}
+
+// ── AttendanceToggle ──────────────────────────────────────────────────────────
 
 interface AttendanceToggleProps {
   bookingId: number
@@ -38,77 +58,35 @@ function AttendanceToggle({ bookingId, attended, onUpdate }: AttendanceTogglePro
 
   return (
     <div className="inline-flex items-center gap-1">
-      <button
-        onClick={() => handleClick(true)}
-        disabled={loading}
-        title="Presente"
-        aria-label="Marcar presente"
-        className={`rounded-lg px-2 py-1 text-xs font-medium transition disabled:opacity-50 ${
-          attended === true
-            ? 'bg-green-100 text-green-700 ring-1 ring-green-400'
-            : 'bg-sage-50 text-sage-400 hover:bg-green-50 hover:text-green-600'
-        }`}
-      >
-        ✓
-      </button>
-      <button
-        onClick={() => handleClick(false)}
-        disabled={loading}
-        title="Falta"
-        aria-label="Marcar falta"
-        className={`rounded-lg px-2 py-1 text-xs font-medium transition disabled:opacity-50 ${
-          attended === false
-            ? 'bg-red-100 text-red-700 ring-1 ring-red-400'
-            : 'bg-sage-50 text-sage-400 hover:bg-red-50 hover:text-red-600'
-        }`}
-      >
-        ✕
-      </button>
+      <button onClick={() => handleClick(true)} disabled={loading} title="Presente"
+        className={`rounded-lg px-2 py-1 text-xs font-medium transition disabled:opacity-50 ${attended === true ? 'bg-green-100 text-green-700 ring-1 ring-green-400' : 'bg-sage-50 text-sage-400 hover:bg-green-50 hover:text-green-600'}`}>✓</button>
+      <button onClick={() => handleClick(false)} disabled={loading} title="Falta"
+        className={`rounded-lg px-2 py-1 text-xs font-medium transition disabled:opacity-50 ${attended === false ? 'bg-red-100 text-red-700 ring-1 ring-red-400' : 'bg-sage-50 text-sage-400 hover:bg-red-50 hover:text-red-600'}`}>✕</button>
     </div>
   )
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
+
 export function SessionManagementAdmin() {
   const { toast } = useToast()
+
+  // ── Week navigation ──────────────────────────────────────────────────────
+  const [weekStart, setWeekStart] = useState<Date>(() =>
+    startOfWeek(new Date(), { weekStartsOn: 1 }),
+  )
+  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 })
+  const days = eachDayOfInterval({ start: weekStart, end: weekEnd })
+
   const [sessions, setSessions] = useState<ClassSessionResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<'ALL' | ClassStatus>('ALL')
 
-  const [editSession, setEditSession] = useState<ClassSessionResponse | null>(null)
-  const [editCapacity, setEditCapacity] = useState('')
-  const [editStatus, setEditStatus] = useState<ClassStatus>('ACTIVE')
-  const [editError, setEditError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-
-  // Attendee list modal
-  const [attendeeSession, setAttendeeSession] = useState<ClassSessionResponse | null>(null)
-  const [attendees, setAttendees] = useState<SessionBookingResponse[]>([])
-  const [attendeeLoading, setAttendeeLoading] = useState(false)
-  const [attendeeError, setAttendeeError] = useState<string | null>(null)
-
-  // Create ad-hoc session modal
-  const [createOpen, setCreateOpen] = useState(false)
-  const [classTypes, setClassTypes] = useState<ClassTypeResponse[]>([])
-  const [createForm, setCreateForm] = useState({
-    classTypeId: '',
-    date: '',
-    time: '',
-    durationMin: '60',
-    capacity: '15',
-  })
-  const [createError, setCreateError] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
-
-  const load = useCallback(async () => {
+  const load = useCallback(async (from: Date, to: Date) => {
     setLoading(true)
     setError(null)
     try {
-      // Fetch a wide range (next 90 days) so admins can manage upcoming sessions
-      const now = new Date()
-      const from = now.toISOString()
-      const to = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString()
-      setSessions(await listClassSessions(from, to))
+      setSessions(await listClassSessions(from.toISOString(), to.toISOString()))
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -116,18 +94,36 @@ export function SessionManagementAdmin() {
     }
   }, [])
 
-  useEffect(() => {
-    load()
-  }, [load])
+  const reload = useCallback(() => load(weekStart, weekEnd), [load, weekStart, weekEnd])
 
-  const openEdit = (session: ClassSessionResponse) => {
-    setEditSession(session)
-    setEditCapacity(String(session.capacity))
-    setEditStatus(
-      sessions.find((s) => s.id === session.id)?.startDateTime
-        ? 'ACTIVE'
-        : 'ACTIVE',
-    )
+  useEffect(() => { reload() }, [weekStart]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sessionsByDay = useMemo(() => {
+    const map = new Map<number, ClassSessionResponse[]>()
+    for (const s of sessions) {
+      const idx = days.findIndex((d) => isSameDay(d, parseISO(s.startDateTime)))
+      if (idx === -1) continue
+      const arr = map.get(idx) ?? []
+      arr.push(s)
+      map.set(idx, arr)
+    }
+    return map
+  }, [sessions, days])
+
+  // ── Selected session panel ───────────────────────────────────────────────
+  const [selectedSession, setSelectedSession] = useState<ClassSessionResponse | null>(null)
+
+  // ── Edit modal ───────────────────────────────────────────────────────────
+  const [editSession, setEditSession] = useState<ClassSessionResponse | null>(null)
+  const [editCapacity, setEditCapacity] = useState('')
+  const [editStatus, setEditStatus] = useState<ClassStatus>('ACTIVE')
+  const [editError, setEditError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const openEdit = (s: ClassSessionResponse) => {
+    setEditSession(s)
+    setEditCapacity(String(s.capacity))
+    setEditStatus('ACTIVE')
     setEditError(null)
   }
 
@@ -141,7 +137,8 @@ export function SessionManagementAdmin() {
         status: editStatus,
       })
       setEditSession(null)
-      await load()
+      setSelectedSession(null)
+      await reload()
       toast(editStatus === 'CANCELLED' ? 'Sessão cancelada e reservas encerradas.' : 'Sessão atualizada.')
     } catch (err) {
       setEditError(getErrorMessage(err))
@@ -150,12 +147,18 @@ export function SessionManagementAdmin() {
     }
   }
 
-  const openAttendees = async (session: ClassSessionResponse) => {
-    setAttendeeSession(session)
+  // ── Attendees modal ──────────────────────────────────────────────────────
+  const [attendeeSession, setAttendeeSession] = useState<ClassSessionResponse | null>(null)
+  const [attendees, setAttendees] = useState<SessionBookingResponse[]>([])
+  const [attendeeLoading, setAttendeeLoading] = useState(false)
+  const [attendeeError, setAttendeeError] = useState<string | null>(null)
+
+  const openAttendees = async (s: ClassSessionResponse) => {
+    setAttendeeSession(s)
     setAttendeeLoading(true)
     setAttendeeError(null)
     try {
-      setAttendees(await listSessionBookings(session.id))
+      setAttendees(await listSessionBookings(s.id))
     } catch (err) {
       setAttendeeError(getErrorMessage(err))
     } finally {
@@ -163,24 +166,64 @@ export function SessionManagementAdmin() {
     }
   }
 
+  // ── Admin enroll student ─────────────────────────────────────────────────
+  const [enrollSearch, setEnrollSearch] = useState('')
+  const [enrollStudents, setEnrollStudents] = useState<StudentSummary[]>([])
+  const [enrolling, setEnrolling] = useState(false)
+  const [enrollError, setEnrollError] = useState<string | null>(null)
+
+  const loadEnrollStudents = useCallback(async () => {
+    try {
+      setEnrollStudents(await listStudents())
+    } catch (_) {}
+  }, [])
+
+  useEffect(() => {
+    if (attendeeSession) {
+      loadEnrollStudents()
+      setEnrollSearch('')
+      setEnrollError(null)
+    }
+  }, [attendeeSession, loadEnrollStudents])
+
+  const filteredEnrollStudents = enrollSearch.trim()
+    ? enrollStudents.filter((s) => s.name.toLowerCase().includes(enrollSearch.toLowerCase()))
+    : []
+
+  const handleEnroll = async (student: StudentSummary) => {
+    if (!attendeeSession) return
+    setEnrolling(true)
+    setEnrollError(null)
+    setEnrollSearch('')
+    try {
+      await adminBookStudent(attendeeSession.id, student.id)
+      setAttendees(await listSessionBookings(attendeeSession.id))
+      await reload()
+      toast(`${student.name} inscrito com sucesso!`)
+    } catch (err) {
+      setEnrollError(getErrorMessage(err))
+    } finally {
+      setEnrolling(false)
+    }
+  }
+
+  // ── Create ad-hoc modal ──────────────────────────────────────────────────
+  const [createOpen, setCreateOpen] = useState(false)
+  const [classTypes, setClassTypes] = useState<ClassTypeResponse[]>([])
+  const [createForm, setCreateForm] = useState({ classTypeId: '', date: '', time: '', durationMin: '60', capacity: '15' })
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+
   const openCreate = async () => {
     setCreateError(null)
-    // Pre-populate date with today and default time
     const now = new Date()
-    setCreateForm({
-      classTypeId: classTypes[0] ? String(classTypes[0].id) : '',
-      date: now.toISOString().slice(0, 10),
-      time: '08:00',
-      durationMin: '60',
-      capacity: '15',
-    })
-    // Load class types if not yet loaded
+    setCreateForm({ classTypeId: classTypes[0] ? String(classTypes[0].id) : '', date: now.toISOString().slice(0, 10), time: '08:00', durationMin: '60', capacity: '15' })
     if (classTypes.length === 0) {
       try {
         const types = await listClassTypes()
         setClassTypes(types)
         setCreateForm((f) => ({ ...f, classTypeId: types[0] ? String(types[0].id) : '' }))
-      } catch (_) { /* ignore */ }
+      } catch (_) {}
     }
     setCreateOpen(true)
   }
@@ -190,24 +233,13 @@ export function SessionManagementAdmin() {
     setCreating(true)
     setCreateError(null)
     try {
-      // Combine date + time into an ISO offset datetime using the studio timezone offset
-      // We send a local datetime string; the browser appends the local offset automatically
-      const localDt = `${createForm.date}T${createForm.time}:00`
-      // Get the offset for America/Sao_Paulo at that moment
-      const dtAsDate = new Date(localDt)
-      const offsetMs = -3 * 60 * 60 * 1000 // BRT = UTC-3
+      const dtAsDate = new Date(`${createForm.date}T${createForm.time}:00`)
+      const offsetMs = -3 * 60 * 60 * 1000
       const utcMs = dtAsDate.getTime() - offsetMs - dtAsDate.getTimezoneOffset() * 60 * 1000
-      const utcDate = new Date(utcMs)
-      const isoWithOffset = utcDate.toISOString().replace('Z', '-03:00')
-
-      await createAdHocSession({
-        classTypeId: Number(createForm.classTypeId),
-        startDateTime: isoWithOffset,
-        durationMin: Number(createForm.durationMin),
-        capacity: Number(createForm.capacity),
-      })
+      const isoWithOffset = new Date(utcMs).toISOString().replace('Z', '-03:00')
+      await createAdHocSession({ classTypeId: Number(createForm.classTypeId), startDateTime: isoWithOffset, durationMin: Number(createForm.durationMin), capacity: Number(createForm.capacity) })
       setCreateOpen(false)
-      await load()
+      await reload()
       toast('Aula avulsa criada com sucesso!')
     } catch (err) {
       setCreateError(getErrorMessage(err))
@@ -216,207 +248,221 @@ export function SessionManagementAdmin() {
     }
   }
 
-  // The backend only returns ACTIVE sessions, so both filters show the same set.
-  const filtered = filter === 'ALL' ? sessions : sessions
+  // ── Navigation ───────────────────────────────────────────────────────────
+  const prevWeek = () => setWeekStart((w) => subWeeks(w, 1))
+  const nextWeek = () => setWeekStart((w) => addWeeks(w, 1))
+  const goToday = () => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const weekLabel = `${format(weekStart, "d 'de' MMM", { locale: ptBR })} – ${format(weekEnd, "d 'de' MMM yyyy", { locale: ptBR })}`
+  const isPastWeek = isBefore(weekEnd, new Date())
 
-  if (loading) return <FullPageSpinner />
+  const inputClass = 'w-full rounded-lg border border-sage-200 px-3 py-2 text-sage-800 outline-none focus:border-sage-500'
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      {/* ── Header ── */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-sage-800">Sessões</h1>
-        <div className="flex gap-2">
-          <button
-            onClick={openCreate}
-            className="rounded-lg bg-sage-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sage-700"
-          >
-            + Nova Aula Avulsa
-          </button>
-          {(['ALL', 'ACTIVE'] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`rounded-lg px-3 py-1.5 text-sm transition ${
-                filter === f
-                  ? 'bg-sage-600 text-white'
-                  : 'border border-sage-200 text-sage-600 hover:bg-sage-50'
-              }`}
-            >
-              {f === 'ALL' ? 'Todas' : 'Ativas'}
-            </button>
-          ))}
-          <button
-            onClick={load}
-            className="rounded-lg border border-sage-200 px-3 py-1.5 text-sm text-sage-600 transition hover:bg-sage-50"
-          >
-            Atualizar
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={prevWeek} className="rounded-lg border border-sage-200 px-2.5 py-1.5 text-sm text-sage-600 hover:bg-sage-50">‹</button>
+          <button onClick={goToday} className="rounded-lg border border-sage-200 px-2.5 py-1.5 text-sm text-sage-600 hover:bg-sage-50">Hoje</button>
+          <button onClick={nextWeek} className="rounded-lg border border-sage-200 px-2.5 py-1.5 text-sm text-sage-600 hover:bg-sage-50">›</button>
+          <span className={`text-sm font-medium ${isPastWeek ? 'text-sage-400' : 'text-sage-600'}`}>{weekLabel}</span>
+          <button onClick={reload} className="rounded-lg border border-sage-200 px-2.5 py-1.5 text-sm text-sage-600 hover:bg-sage-50">↺</button>
+          <button onClick={openCreate} className="rounded-lg bg-sage-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-sage-700">+ Nova Aula Avulsa</button>
         </div>
       </div>
 
       <ErrorBanner message={error} />
 
-      {filtered.length === 0 && !error ? (
-        <div className="rounded-xl border border-dashed border-sage-200 py-16 text-center text-sage-400">
-          Nenhuma sessão encontrada. Gere sessões na aba "Gerar".
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-sage-100 bg-white shadow-sm">
-          <table className="w-full text-left">
-            <thead className="border-b border-sage-100 bg-sage-50 text-sm text-sage-500">
-              <tr>
-                <th className="px-4 py-3 font-medium">Tipo</th>
-                <th className="px-4 py-3 font-medium">Início</th>
-                <th className="px-4 py-3 font-medium">Duração</th>
-                <th className="px-4 py-3 font-medium">Capacidade</th>
-                <th className="px-4 py-3 font-medium">Confirmadas</th>
-                <th className="px-4 py-3 font-medium">Disponíveis</th>
-                <th className="px-4 py-3 font-medium text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-sage-50">
-              {filtered.map((session) => (
-                <tr key={session.id} className="text-sm text-sage-700">
-                  <td className="px-4 py-3 font-medium">
-                    {session.classTypeName}
-                  </td>
-                  <td className="px-4 py-3">
-                    {formatDateTime(session.startDateTime)}
-                  </td>
-                  <td className="px-4 py-3">
-                    {formatDuration(session.durationMin)}
-                  </td>
-                  <td className="px-4 py-3">{session.capacity}</td>
-                  <td className="px-4 py-3">{session.confirmedCount}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={
-                        session.availableSpots === 0
-                          ? 'text-terracotta-500 font-medium'
-                          : 'text-sage-600'
-                      }
-                    >
-                      {session.availableSpots}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => openAttendees(session)}
-                        className="rounded-lg border border-sage-200 px-3 py-1 text-xs text-sage-500 hover:bg-sage-50"
-                      >
-                        Inscritos ({session.confirmedCount})
-                      </button>
-                      <button
-                        onClick={() => openEdit(session)}
-                        className="rounded-lg border border-sage-200 px-3 py-1 text-xs text-sage-600 hover:bg-sage-50"
-                      >
-                        Editar
-                      </button>
+      {/* ── MOBILE: list grouped by day ── */}
+      <div className="block md:hidden">
+        {loading ? (
+          <div className="flex justify-center py-16"><Spinner className="text-sage-400" /></div>
+        ) : sessions.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-sage-200 py-14 text-center text-sm text-sage-400">
+            Nenhuma sessão nesta semana. Gere sessões na aba "Gerar".
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {days.map((day, idx) => {
+              const daySessions = sessionsByDay.get(idx) ?? []
+              if (daySessions.length === 0) return null
+              return (
+                <div key={idx}>
+                  <div className="mb-2 flex items-center gap-2">
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${isToday(day) ? 'bg-sage-600 text-white' : 'bg-sage-100 text-sage-600'}`}>
+                      {format(day, 'd')}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                    <div>
+                      <p className="text-sm font-semibold capitalize text-sage-700">{format(day, 'EEEE', { locale: ptBR })}</p>
+                      <p className="text-xs text-sage-400">{format(day, 'dd/MM', { locale: ptBR })}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2 pl-11">
+                    {daySessions.map((s) => (
+                      <button key={s.id} onClick={() => setSelectedSession(s)}
+                        className="w-full rounded-xl border border-sage-100 bg-white p-3 text-left shadow-sm hover:border-sage-300 transition">
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold text-sage-800">{s.classTypeName}</p>
+                          <span className={`text-xs font-medium ${s.availableSpots === 0 ? 'text-orange-500' : 'text-sage-500'}`}>{s.confirmedCount}/{s.capacity}</span>
+                        </div>
+                        <p className="text-sm text-sage-500">{sessionTime(s.startDateTime)} · {formatDuration(s.durationMin)}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
 
-      {/* Edit session modal */}
+      {/* ── DESKTOP: 7-column calendar ── */}
+      <div className="hidden md:block overflow-x-auto rounded-xl border border-sage-100 bg-white shadow-sm">
+        {/* Day headers */}
+        <div className="grid border-b border-sage-100" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+          {days.map((day, idx) => (
+            <div key={idx} className={`border-r border-sage-50 px-2 py-3 text-center last:border-r-0 ${isToday(day) ? 'bg-sage-50' : ''}`}>
+              <p className="text-xs font-medium uppercase tracking-wide text-sage-400">{format(day, 'EEE', { locale: ptBR })}</p>
+              <p className={`mt-0.5 text-lg font-semibold leading-none ${isToday(day) ? 'mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-sage-600 text-white' : 'text-sage-700'}`}>
+                {format(day, 'd')}
+              </p>
+            </div>
+          ))}
+        </div>
+        {/* Session cells */}
+        <div className="grid min-h-[200px]" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+          {days.map((_, idx) => {
+            const daySessions = sessionsByDay.get(idx) ?? []
+            return (
+              <div key={idx} className="border-r border-sage-50 p-1.5 last:border-r-0">
+                {loading ? (
+                  <div className="flex h-16 items-center justify-center"><Spinner className="text-sage-300" /></div>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {daySessions.map((s) => (
+                      <button key={s.id} onClick={() => setSelectedSession(s)}
+                        className={`w-full rounded-lg px-2 py-1.5 text-left text-xs transition focus:outline-none focus:ring-2 focus:ring-sage-400 ${s.availableSpots === 0 ? 'bg-orange-50 hover:bg-orange-100' : 'bg-sage-50 hover:bg-sage-100'}`}>
+                        <p className="truncate font-semibold leading-tight text-sage-800">{s.classTypeName}</p>
+                        <p className="mt-0.5 text-sage-500">{sessionTime(s.startDateTime)} · {formatDuration(s.durationMin)}</p>
+                        <p className={`mt-0.5 font-medium ${s.availableSpots === 0 ? 'text-orange-600' : 'text-sage-600'}`}>
+                          {s.confirmedCount}/{s.capacity} vagas
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+        {!loading && sessions.length === 0 && (
+          <div className="border-t border-sage-50 py-12 text-center text-sm text-sage-400">
+            Nenhuma sessão nesta semana. Gere sessões na aba "Gerar".
+          </div>
+        )}
+      </div>
+
+      {/* ── Session detail panel (slide-in from right on click) ── */}
       <Modal
-        open={editSession !== null}
-        onClose={() => setEditSession(null)}
-        title="Editar sessão"
+        open={selectedSession !== null}
+        onClose={() => setSelectedSession(null)}
+        title={selectedSession?.classTypeName ?? ''}
       >
-        {editSession && (
+        {selectedSession && (
           <div className="space-y-4">
             <div className="rounded-lg bg-sage-50 p-3 text-sm">
-              <p className="font-medium text-sage-800">
-                {editSession.classTypeName}
-              </p>
-              <p className="text-sage-500">
-                {formatDateTime(editSession.startDateTime)}
+              <p className="text-sage-500">{formatDateTime(selectedSession.startDateTime)} · {formatDuration(selectedSession.durationMin)}</p>
+              <p className={`mt-1 font-medium ${selectedSession.availableSpots === 0 ? 'text-orange-600' : 'text-sage-700'}`}>
+                {selectedSession.confirmedCount}/{selectedSession.capacity} vagas · {selectedSession.availableSpots} disponíveis
               </p>
             </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-sage-700">
-                Capacidade
-              </label>
-              <input
-                type="number"
-                min={1}
-                value={editCapacity}
-                onChange={(e) => setEditCapacity(e.target.value)}
-                className="w-full rounded-lg border border-sage-200 px-3 py-2 text-sage-800 outline-none focus:border-sage-500"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-sage-700">
-                Status
-              </label>
-              <div className="flex gap-3">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="status"
-                    value="ACTIVE"
-                    checked={editStatus === 'ACTIVE'}
-                    onChange={() => setEditStatus('ACTIVE')}
-                  />
-                  <ClassStatusBadge status="ACTIVE" />
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="status"
-                    value="CANCELLED"
-                    checked={editStatus === 'CANCELLED'}
-                    onChange={() => setEditStatus('CANCELLED')}
-                  />
-                  <ClassStatusBadge status="CANCELLED" />
-                </label>
-              </div>
-              <p className="mt-1 text-xs text-amber-600">
-                Cancelar uma sessão cancela automaticamente todas as reservas
-                ativas (confirmadas e lista de espera) dessa aula.
-              </p>
-            </div>
-
-            <ErrorBanner message={editError} />
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                onClick={() => setEditSession(null)}
-                className="rounded-lg px-4 py-2 text-sm text-sage-600 hover:bg-sage-50"
-              >
-                Cancelar
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => { setSelectedSession(null); openAttendees(selectedSession) }}
+                className="rounded-lg border border-sage-200 px-4 py-2 text-sm text-sage-600 hover:bg-sage-50">
+                Ver inscritos ({selectedSession.confirmedCount})
               </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-2 rounded-lg bg-sage-600 px-4 py-2 text-sm font-medium text-white hover:bg-sage-700 disabled:opacity-60"
-              >
-                {saving && <Spinner />}
-                Salvar
+              <button onClick={() => { setSelectedSession(null); openEdit(selectedSession) }}
+                className="rounded-lg border border-sage-200 px-4 py-2 text-sm text-sage-600 hover:bg-sage-50">
+                Editar
               </button>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* ── Attendees modal ── */}
-      <Modal
-        open={attendeeSession !== null}
-        onClose={() => setAttendeeSession(null)}
-        title={`Inscritos — ${attendeeSession?.classTypeName ?? ''}`}
-      >
+      {/* ── Edit session modal ── */}
+      <Modal open={editSession !== null} onClose={() => setEditSession(null)} title="Editar sessão">
+        {editSession && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-sage-50 p-3 text-sm">
+              <p className="font-medium text-sage-800">{editSession.classTypeName}</p>
+              <p className="text-sage-500">{formatDateTime(editSession.startDateTime)}</p>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-sage-700">Capacidade</label>
+              <input type="number" min={1} value={editCapacity} onChange={(e) => setEditCapacity(e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-sage-700">Status</label>
+              <div className="flex gap-3">
+                {(['ACTIVE', 'CANCELLED'] as ClassStatus[]).map((s) => (
+                  <label key={s} className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="status" value={s} checked={editStatus === s} onChange={() => setEditStatus(s)} />
+                    <ClassStatusBadge status={s} />
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-amber-600">Cancelar cancela automaticamente todas as reservas ativas.</p>
+            </div>
+            <ErrorBanner message={editError} />
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={() => setEditSession(null)} className="rounded-lg px-4 py-2 text-sm text-sage-600 hover:bg-sage-50">Cancelar</button>
+              <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 rounded-lg bg-sage-600 px-4 py-2 text-sm font-medium text-white hover:bg-sage-700 disabled:opacity-60">
+                {saving && <Spinner />}Salvar
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Attendees modal with enroll ── */}
+      <Modal open={attendeeSession !== null} onClose={() => setAttendeeSession(null)} title={`Inscritos — ${attendeeSession?.classTypeName ?? ''}`}>
         {attendeeSession && (
           <div>
-            <p className="mb-4 text-sm text-sage-500">
-              {formatDateTime(attendeeSession.startDateTime)} · {formatDuration(attendeeSession.durationMin)}
-            </p>
+            <p className="mb-3 text-sm text-sage-500">{formatDateTime(attendeeSession.startDateTime)} · {formatDuration(attendeeSession.durationMin)}</p>
+
+            {/* Enroll student search */}
+            <div className="mb-4 rounded-lg border border-sage-100 bg-sage-50 p-3">
+              <p className="mb-2 text-xs font-medium text-sage-600">Inscrever aluno</p>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Buscar aluno por nome..."
+                  value={enrollSearch}
+                  onChange={(e) => setEnrollSearch(e.target.value)}
+                  disabled={enrolling}
+                  className="w-full rounded-lg border border-sage-200 bg-white px-3 py-2 text-sm text-sage-800 outline-none focus:border-sage-500 disabled:opacity-60"
+                />
+                {enrollSearch.trim() && (
+                  <div className="absolute z-10 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-sage-200 bg-white shadow-lg">
+                    {filteredEnrollStudents.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-sage-400">Nenhum aluno encontrado.</p>
+                    ) : (
+                      filteredEnrollStudents.map((s) => (
+                        <button key={s.id} type="button" onClick={() => handleEnroll(s)} disabled={enrolling}
+                          className="block w-full px-3 py-2 text-left text-sm text-sage-700 hover:bg-sage-50 disabled:opacity-50">
+                          {s.name}
+                          <span className="ml-2 text-xs text-sage-400">{s.email}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              <ErrorBanner message={enrollError} />
+            </div>
+
             <ErrorBanner message={attendeeError} />
             {attendeeLoading ? (
               <div className="flex justify-center py-8"><Spinner className="text-sage-500" /></div>
@@ -439,36 +485,19 @@ export function SessionManagementAdmin() {
                           <p className="font-medium">{a.studentName}</p>
                           <p className="text-xs text-sage-400">{a.studentEmail}</p>
                         </td>
-                        <td className="px-3 py-2">
-                          <BookingStatusBadge status={a.status} />
-                        </td>
+                        <td className="px-3 py-2"><BookingStatusBadge status={a.status} /></td>
                         <td className="px-3 py-2 text-center">
                           {a.status === 'CONFIRMED' ? (
-                            <AttendanceToggle
-                              bookingId={a.bookingId}
-                              attended={a.attended}
-                              onUpdate={(updated) =>
-                                setAttendees((prev) =>
-                                  prev.map((x) =>
-                                    x.bookingId === updated.bookingId ? updated : x,
-                                  ),
-                                )
-                              }
-                            />
-                          ) : (
-                            <span className="text-xs text-sage-300">—</span>
-                          )}
+                            <AttendanceToggle bookingId={a.bookingId} attended={a.attended}
+                              onUpdate={(updated) => setAttendees((prev) => prev.map((x) => x.bookingId === updated.bookingId ? updated : x))} />
+                          ) : <span className="text-xs text-sage-300">—</span>}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
                 <p className="border-t border-sage-50 px-3 py-2 text-xs text-sage-400">
-                  {attendees.filter((a) => a.status === 'CONFIRMED').length} confirmados
-                  {' · '}
-                  {attendees.filter((a) => a.attended === true).length} presentes
-                  {' · '}
-                  {attendees.filter((a) => a.attended === false).length} faltas
+                  {attendees.filter((a) => a.status === 'CONFIRMED').length} confirmados · {attendees.filter((a) => a.attended === true).length} presentes · {attendees.filter((a) => a.attended === false).length} faltas
                 </p>
               </div>
             )}
@@ -484,76 +513,36 @@ export function SessionManagementAdmin() {
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-sage-700">Tipo de aula</label>
-            <select
-              required
-              value={createForm.classTypeId}
-              onChange={(e) => setCreateForm({ ...createForm, classTypeId: e.target.value })}
-              className="w-full rounded-lg border border-sage-200 px-3 py-2 text-sage-800 outline-none focus:border-sage-500"
-            >
-              {classTypes.map((ct) => (
-                <option key={ct.id} value={String(ct.id)}>{ct.name}</option>
-              ))}
+            <select required value={createForm.classTypeId} onChange={(e) => setCreateForm({ ...createForm, classTypeId: e.target.value })} className={inputClass}>
+              {classTypes.map((ct) => <option key={ct.id} value={String(ct.id)}>{ct.name}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-sm font-medium text-sage-700">Data</label>
-              <input
-                type="date"
-                required
-                value={createForm.date}
-                onChange={(e) => setCreateForm({ ...createForm, date: e.target.value })}
-                className="w-full rounded-lg border border-sage-200 px-3 py-2 text-sage-800 outline-none focus:border-sage-500"
-              />
+              <input type="date" required value={createForm.date} onChange={(e) => setCreateForm({ ...createForm, date: e.target.value })} className={inputClass} />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-sage-700">Horário</label>
-              <input
-                type="time"
-                required
-                value={createForm.time}
-                onChange={(e) => setCreateForm({ ...createForm, time: e.target.value })}
-                className="w-full rounded-lg border border-sage-200 px-3 py-2 text-sage-800 outline-none focus:border-sage-500"
-              />
+              <input type="time" required value={createForm.time} onChange={(e) => setCreateForm({ ...createForm, time: e.target.value })} className={inputClass} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-sm font-medium text-sage-700">Duração (min)</label>
-              <input
-                type="number"
-                min={1}
-                required
-                value={createForm.durationMin}
-                onChange={(e) => setCreateForm({ ...createForm, durationMin: e.target.value })}
-                className="w-full rounded-lg border border-sage-200 px-3 py-2 text-sage-800 outline-none focus:border-sage-500"
-              />
+              <input type="number" min={1} required value={createForm.durationMin} onChange={(e) => setCreateForm({ ...createForm, durationMin: e.target.value })} className={inputClass} />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-sage-700">Capacidade</label>
-              <input
-                type="number"
-                min={1}
-                required
-                value={createForm.capacity}
-                onChange={(e) => setCreateForm({ ...createForm, capacity: e.target.value })}
-                className="w-full rounded-lg border border-sage-200 px-3 py-2 text-sage-800 outline-none focus:border-sage-500"
-              />
+              <input type="number" min={1} required value={createForm.capacity} onChange={(e) => setCreateForm({ ...createForm, capacity: e.target.value })} className={inputClass} />
             </div>
           </div>
-          <p className="text-xs text-sage-400">
-            Aula avulsa não está vinculada a nenhuma aula recorrente. Alunos podem reservar normalmente após a criação.
-          </p>
+          <p className="text-xs text-sage-400">Aula avulsa não está vinculada a nenhuma aula recorrente.</p>
           <ErrorBanner message={createError} />
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => setCreateOpen(false)} className="rounded-lg px-4 py-2 text-sm text-sage-600 hover:bg-sage-50">Cancelar</button>
-            <button
-              type="submit"
-              disabled={creating}
-              className="flex items-center gap-2 rounded-lg bg-sage-600 px-4 py-2 text-sm font-medium text-white hover:bg-sage-700 disabled:opacity-60"
-            >
-              {creating && <Spinner />}
-              Criar aula
+            <button type="submit" disabled={creating} className="flex items-center gap-2 rounded-lg bg-sage-600 px-4 py-2 text-sm font-medium text-white hover:bg-sage-700 disabled:opacity-60">
+              {creating && <Spinner />}Criar aula
             </button>
           </div>
         </form>

@@ -12,5 +12,7 @@ public record RegisterRequest(
         String phone,
         Integer age,
         @NotBlank(message = "Password is required") @Size(min = 6, message = "Password must be at least 6 characters") String password,
-        PlanType planType
+        PlanType planType,
+        /** Optional plan FK — when provided, associates the student with a specific Plan row. */
+        Long planId
 ) {}

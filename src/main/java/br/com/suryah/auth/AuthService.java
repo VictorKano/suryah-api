@@ -1,10 +1,14 @@
 package br.com.suryah.auth;
 
+import br.com.suryah.plan.Plan;
+import br.com.suryah.plan.PlanRepository;
 import br.com.suryah.student.Role;
 import br.com.suryah.student.Student;
 import br.com.suryah.student.StudentRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class AuthService {
@@ -12,13 +16,16 @@ public class AuthService {
     private final StudentRepository studentRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final PlanRepository planRepository;
 
     public AuthService(StudentRepository studentRepository,
                        PasswordEncoder passwordEncoder,
-                       JwtService jwtService) {
+                       JwtService jwtService,
+                       PlanRepository planRepository) {
         this.studentRepository = studentRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.planRepository = planRepository;
     }
 
     public StudentResponse register(RegisterRequest request) {
@@ -46,6 +53,13 @@ public class AuthService {
         student.setPasswordHash(passwordEncoder.encode(request.password()));
         student.setPlanType(request.planType());
         student.setRole(Role.STUDENT);
+
+        // Associate with a Plan row when planId is provided
+        if (request.planId() != null) {
+            Plan plan = planRepository.findById(request.planId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Plan not found"));
+            student.setPlan(plan);
+        }
 
         Student saved = studentRepository.save(student);
 

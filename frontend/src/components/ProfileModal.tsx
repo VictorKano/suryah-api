@@ -6,6 +6,7 @@ import { Modal } from './Modal'
 import { ErrorBanner } from './ErrorBanner'
 import { Spinner } from './Spinner'
 import { useToast } from './Toast'
+import { PasswordInput } from './PasswordInput'
 import { PLAN_LABELS, PLAN_OPTIONS } from '../utils/constants'
 import { isValidEmail, isValidPhone, maskPhone } from '../utils/validation'
 import type { PlanType } from '../types'
@@ -173,32 +174,26 @@ export function ProfileModal({ open, onClose, adminMode = false }: Props) {
           <div className="space-y-3">
             <div>
               <label className="mb-1 block text-sm font-medium text-sage-700">Senha atual</label>
-              <input
-                type="password"
+              <PasswordInput
                 value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                className={inputClass}
+                onChange={setCurrentPassword}
                 autoComplete="current-password"
                 placeholder="Necessário para alterar a senha"
               />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-sage-700">Nova senha</label>
-              <input
-                type="password"
+              <PasswordInput
                 value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className={inputClass}
+                onChange={setNewPassword}
                 autoComplete="new-password"
               />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-sage-700">Confirmar nova senha</label>
-              <input
-                type="password"
+              <PasswordInput
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className={inputClass}
+                onChange={setConfirmPassword}
                 autoComplete="new-password"
               />
             </div>

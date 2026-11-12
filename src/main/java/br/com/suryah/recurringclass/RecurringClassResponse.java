@@ -10,5 +10,6 @@ public record RecurringClassResponse(
         Integer durationMin,
         String classTypeName,
         Integer capacity,
+        long enrolledCount,
         Boolean active
 ) {}

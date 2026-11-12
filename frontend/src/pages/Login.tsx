@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { getErrorMessage } from '../api/client'
 import { Spinner } from '../components/Spinner'
 import { ErrorBanner } from '../components/ErrorBanner'
+import { PasswordInput } from '../components/PasswordInput'
 
 export function Login() {
   const { login, loading } = useAuth()
@@ -73,13 +74,10 @@ export function Login() {
             >
               Senha
             </label>
-            <input
+            <PasswordInput
               id="password"
-              type="password"
-              required
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-sage-200 px-3 py-2 text-sage-800 outline-none focus:border-sage-500 focus:ring-2 focus:ring-sage-200"
+              onChange={setPassword}
               autoComplete="current-password"
             />
           </div>

@@ -6,17 +6,19 @@ import {
   getStudentBookingHistory,
 } from '../../api/students'
 import { register } from '../../api/auth'
+import { listPlans } from '../../api/plans'
 import { getErrorMessage } from '../../api/client'
 import { FullPageSpinner, Spinner } from '../../components/Spinner'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { Modal } from '../../components/Modal'
 import { BookingStatusBadge } from '../../components/Badge'
 import { useToast } from '../../components/Toast'
-import { PLAN_LABELS, PLAN_OPTIONS } from '../../utils/constants'
+import { PasswordInput } from '../../components/PasswordInput'
 import { isValidEmail, isValidPhone, maskPhone } from '../../utils/validation'
 import { formatDate, formatDateTime } from '../../utils/format'
 import type {
   AdminUpdateStudentRequest,
+  PlanResponse,
   PlanType,
   StudentBookingEntry,
   StudentDetail,
@@ -29,10 +31,13 @@ export function StudentsAdmin() {
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
+  // ── Plans list (loaded once) ──────────────────────────────────────────────
+  const [plans, setPlans] = useState<PlanResponse[]>([])
+
   // ── Create modal ──────────────────────────────────────────────────────────
   const [createOpen, setCreateOpen] = useState(false)
   const [createForm, setCreateForm] = useState({
-    name: '', email: '', phone: '', age: '', password: '', planType: 'PRIVATE' as PlanType,
+    name: '', email: '', phone: '', age: '', password: '', planId: '' as string,
   })
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
@@ -40,7 +45,7 @@ export function StudentsAdmin() {
 
   // ── Edit modal ────────────────────────────────────────────────────────────
   const [editStudent, setEditStudent] = useState<StudentDetail | null>(null)
-  const [editForm, setEditForm] = useState<AdminUpdateStudentRequest>({})
+  const [editForm, setEditForm] = useState<AdminUpdateStudentRequest & { planId?: number | null }>({})
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const [editFieldErrors, setEditFieldErrors] = useState<Record<string, string>>({})
@@ -63,7 +68,10 @@ export function StudentsAdmin() {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    // Load students and plans in parallel on mount
+    Promise.all([load(), listPlans().then(setPlans)]).catch(() => {})
+  }, [load])
 
   useEffect(() => {
     const id = setTimeout(() => load(search || undefined), 300)
@@ -73,7 +81,7 @@ export function StudentsAdmin() {
   // ── Create ────────────────────────────────────────────────────────────────
 
   const openCreate = () => {
-    setCreateForm({ name: '', email: '', phone: '', age: '', password: '', planType: 'PRIVATE' })
+    setCreateForm({ name: '', email: '', phone: '', age: '', password: '', planId: plans[0] ? String(plans[0].id) : '' })
     setCreateError(null)
     setCreateFieldErrors({})
     setCreateOpen(true)
@@ -88,13 +96,20 @@ export function StudentsAdmin() {
     const errs: Record<string, string> = {}
     if (createForm.email && !isValidEmail(createForm.email)) errs.email = 'Digite um e-mail válido.'
     if (createForm.phone && !isValidPhone(createForm.phone)) errs.phone = 'Digite um telefone válido com DDD.'
+    if (!createForm.planId) errs.planId = 'Selecione um plano.'
     if (Object.keys(errs).length > 0) { setCreateFieldErrors(errs); setCreating(false); return }
+
+    const selectedPlan = plans.find((p) => p.id === Number(createForm.planId))
 
     try {
       await register({
-        name: createForm.name, email: createForm.email,
-        phone: createForm.phone || undefined, age: createForm.age ? Number(createForm.age) : undefined,
-        password: createForm.password, planType: createForm.planType,
+        name: createForm.name,
+        email: createForm.email,
+        phone: createForm.phone || undefined,
+        age: createForm.age ? Number(createForm.age) : undefined,
+        password: createForm.password,
+        planType: (selectedPlan?.billingType === 'SUBSCRIPTION' ? 'PRIVATE' : 'PRIVATE') as PlanType,
+        planId: Number(createForm.planId),
       })
       setCreateOpen(false)
       await load(search || undefined)
@@ -110,7 +125,14 @@ export function StudentsAdmin() {
 
   const openEdit = (s: StudentDetail) => {
     setEditStudent(s)
-    setEditForm({ name: s.name, email: s.email, phone: s.phone ?? '', age: s.age ?? undefined, planType: s.planType })
+    setEditForm({
+      name: s.name,
+      email: s.email,
+      phone: s.phone ?? '',
+      age: s.age ?? undefined,
+      planType: s.planType,
+      planId: s.planId ?? null,
+    })
     setEditError(null)
     setEditFieldErrors({})
   }
@@ -227,7 +249,7 @@ export function StudentsAdmin() {
                   <td className="px-4 py-3">{s.email}</td>
                   <td className="px-4 py-3">{s.phone || '—'}</td>
                   <td className="px-4 py-3">{s.age ?? '—'}</td>
-                  <td className="px-4 py-3">{PLAN_LABELS[s.planType]}</td>
+                  <td className="px-4 py-3">{s.planName ?? '—'}</td>
                   <td className="px-4 py-3">{formatDate(s.createdAt)}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${s.active ? 'bg-green-100 text-green-800' : 'bg-sage-100 text-sage-500'}`}>
@@ -274,7 +296,14 @@ export function StudentsAdmin() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-sage-700">Senha inicial</label>
-            <input type="password" required minLength={6} placeholder="Mínimo 6 caracteres" value={createForm.password} onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })} className={inputClass} />
+            <PasswordInput
+              required
+              minLength={6}
+              placeholder="Mínimo 6 caracteres"
+              value={createForm.password}
+              onChange={(v) => setCreateForm({ ...createForm, password: v })}
+              autoComplete="new-password"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -295,9 +324,25 @@ export function StudentsAdmin() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-sage-700">Plano</label>
-            <select value={createForm.planType} onChange={(e) => setCreateForm({ ...createForm, planType: e.target.value as PlanType })} className={inputClass}>
-              {PLAN_OPTIONS.map((p) => <option key={p} value={p}>{PLAN_LABELS[p]}</option>)}
+            <select
+              required
+              value={createForm.planId}
+              onChange={(e) => setCreateForm({ ...createForm, planId: e.target.value })}
+              className={`${inputClass} ${createFieldErrors.planId ? 'border-red-300' : ''}`}
+            >
+              <option value="">Selecione um plano...</option>
+              {plans.filter((p) => p.active).map((p) => (
+                <option key={p.id} value={String(p.id)}>
+                  {p.name}
+                  {p.billingType === 'SUBSCRIPTION' && p.price != null
+                    ? ` — R$ ${p.price.toFixed(2).replace('.', ',')}/${p.billingCycle === 'MONTHLY' ? 'mês' : p.billingCycle === 'SEMESTER' ? 'sem.' : 'ano'} · ${p.weeklySessionLimit}x/sem`
+                    : p.pricePerAttendance > 0
+                      ? ` — R$ ${p.pricePerAttendance.toFixed(2).replace('.', ',')}/sessão`
+                      : ''}
+                </option>
+              ))}
             </select>
+            {createFieldErrors.planId && <p className="mt-1 text-xs text-red-500">{createFieldErrors.planId}</p>}
           </div>
           <ErrorBanner message={createError} />
           <div className="flex justify-end gap-3 pt-2">
@@ -334,9 +379,26 @@ export function StudentsAdmin() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-sage-700">Plano</label>
-            <select value={editForm.planType ?? 'PRIVATE'} onChange={(e) => setEditForm({ ...editForm, planType: e.target.value as PlanType })} className={inputClass}>
-              {PLAN_OPTIONS.map((p) => <option key={p} value={p}>{PLAN_LABELS[p]}</option>)}
+            <select
+              value={editForm.planId != null ? String(editForm.planId) : ''}
+              onChange={(e) => setEditForm({ ...editForm, planId: e.target.value ? Number(e.target.value) : null })}
+              className={inputClass}
+            >
+              <option value="">Sem plano</option>
+              {plans.filter((p) => p.active).map((p) => (
+                <option key={p.id} value={String(p.id)}>
+                  {p.name}
+                  {p.billingType === 'SUBSCRIPTION' && p.price != null
+                    ? ` — R$ ${p.price.toFixed(2).replace('.', ',')}/${p.billingCycle === 'MONTHLY' ? 'mês' : p.billingCycle === 'SEMESTER' ? 'sem.' : 'ano'} · ${p.weeklySessionLimit}x/sem`
+                    : p.pricePerAttendance > 0
+                      ? ` — R$ ${p.pricePerAttendance.toFixed(2).replace('.', ',')}/sessão`
+                      : ''}
+                </option>
+              ))}
             </select>
+            {editStudent && editForm.planId == null && (
+              <p className="mt-1 text-xs text-sage-400">Aluno ficará sem plano associado.</p>
+            )}
           </div>
           <ErrorBanner message={editError} />
           <div className="flex justify-end gap-3 pt-2">

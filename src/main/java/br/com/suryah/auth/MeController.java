@@ -1,5 +1,8 @@
 package br.com.suryah.auth;
 
+import br.com.suryah.booking.BookingRepository;
+import br.com.suryah.plan.BillingType;
+import br.com.suryah.plan.Plan;
 import br.com.suryah.student.Student;
 import br.com.suryah.student.StudentRepository;
 import org.springframework.http.HttpStatus;
@@ -9,17 +12,28 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.temporal.TemporalAdjusters;
+
 @RestController
 @RequestMapping("/api/me")
 public class MeController {
 
+    private static final ZoneId STUDIO_ZONE = ZoneId.of("America/Sao_Paulo");
+
     private final StudentRepository studentRepository;
     private final PasswordEncoder passwordEncoder;
+    private final BookingRepository bookingRepository;
 
     public MeController(StudentRepository studentRepository,
-                        PasswordEncoder passwordEncoder) {
+                        PasswordEncoder passwordEncoder,
+                        BookingRepository bookingRepository) {
         this.studentRepository = studentRepository;
         this.passwordEncoder = passwordEncoder;
+        this.bookingRepository = bookingRepository;
     }
 
     /** Returns the authenticated user's profile. */
@@ -82,6 +96,43 @@ public class MeController {
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * GET /api/me/weekly-usage?weekOf=2026-11-18
+     * Returns how many confirmed bookings the student has in the requested week vs their plan limit.
+     * weekOf (optional ISO date) — any date within the target week; defaults to today.
+     * Returns null values when the student has a PER_SESSION plan (no limit applies).
+     */
+    @GetMapping("/weekly-usage")
+    @Transactional(readOnly = true)
+    public WeeklyUsageResponse weeklyUsage(
+            Authentication authentication,
+            @RequestParam(required = false) String weekOf) {
+        Student student = resolve(authentication);
+        Plan plan = student.getPlan();
+
+        if (plan == null || plan.getBillingType() != BillingType.SUBSCRIPTION) {
+            return new WeeklyUsageResponse(null, null, null);
+        }
+
+        Integer limit = plan.getWeeklySessionLimit();
+
+        // Determine the Mon–Sun window for the requested week (or current week if not specified)
+        LocalDate anchor = (weekOf != null && !weekOf.isBlank())
+                ? LocalDate.parse(weekOf)
+                : LocalDate.now(STUDIO_ZONE);
+        LocalDate monday = anchor.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+
+        OffsetDateTime weekStart = monday.atStartOfDay(STUDIO_ZONE).toOffsetDateTime();
+        OffsetDateTime weekEnd   = monday.plusDays(7).atStartOfDay(STUDIO_ZONE).toOffsetDateTime();
+
+        long used = bookingRepository.countConfirmedInWeek(student.getId(), weekStart, weekEnd);
+        int remaining = limit != null ? Math.max(0, limit - (int) used) : 0;
+
+        return new WeeklyUsageResponse((int) used, limit, remaining);
+    }
+
+    public record WeeklyUsageResponse(Integer used, Integer limit, Integer remaining) {}
 
     private Student resolve(Authentication authentication) {
         if (authentication == null || !(authentication.getPrincipal() instanceof Long id)) {

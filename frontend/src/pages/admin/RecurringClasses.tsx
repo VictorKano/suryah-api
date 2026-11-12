@@ -249,117 +249,88 @@ export function RecurringClassesAdmin() {
         </div>
       ) : (
         <>
-          {/* ── Mobile: card list (hidden on md+) ── */}
-          <div className="flex flex-col gap-3 md:hidden">
-            {items.map((rc) => (
-              <div
-                key={rc.id}
-                className={`rounded-xl border border-sage-100 bg-white p-4 shadow-sm ${!rc.active ? 'opacity-60' : ''}`}
-              >
-                <div className="mb-2 flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-sage-800">{rc.classTypeName}</p>
-                    <p className="text-sm text-sage-500">
-                      {DAY_OF_WEEK_LABELS[rc.dayOfWeek]} · {fromLocalTimeString(rc.startTime)} · {rc.durationMin} min · {rc.capacity} vagas
-                    </p>
-                  </div>
-                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                    rc.active ? 'bg-green-100 text-green-800' : 'bg-sage-100 text-sage-500'
-                  }`}>
-                    {rc.active ? 'Ativa' : 'Inativa'}
+          {/* ── Grouped by day — works on all screen sizes ── */}
+          {(() => {
+            // Day order: Monday → Sunday
+            const DAY_ORDER: Record<string, number> = {
+              MONDAY: 1, TUESDAY: 2, WEDNESDAY: 3, THURSDAY: 4,
+              FRIDAY: 5, SATURDAY: 6, SUNDAY: 7,
+            }
+
+            // Group items by day, then sort groups by ISO day number
+            const groups = new Map<string, typeof items>()
+            for (const rc of items) {
+              if (!groups.has(rc.dayOfWeek)) groups.set(rc.dayOfWeek, [])
+              groups.get(rc.dayOfWeek)!.push(rc)
+            }
+            const sortedGroups = Array.from(groups.entries())
+              .sort(([a], [b]) => (DAY_ORDER[a] ?? 9) - (DAY_ORDER[b] ?? 9))
+            return sortedGroups.map(([day, rcs]: [string, typeof items]) => (
+              <div key={day} className="mb-6">
+                {/* Day header */}
+                <div className="mb-3 flex items-center gap-3">
+                  <h2 className="text-base font-bold capitalize text-sage-700">
+                    {DAY_OF_WEEK_LABELS[day as keyof typeof DAY_OF_WEEK_LABELS]}
+                  </h2>
+                  <div className="h-px flex-1 bg-sage-100" />
+                  <span className="text-xs text-sage-400">
+                    {rcs.length} aula{rcs.length !== 1 ? 's' : ''}
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-2 pt-1 border-t border-sage-50">
-                  <button onClick={() => openEnrollments(rc)} className="rounded-lg border border-sand-300 px-3 py-1.5 text-xs text-sand-500 hover:bg-sand-100">
-                    Alunos Fixos
-                  </button>
-                  <button onClick={() => openEdit(rc)} className="rounded-lg border border-sage-200 px-3 py-1.5 text-xs text-sage-600 hover:bg-sage-50">
-                    Editar
-                  </button>
-                  <button
-                    onClick={() => handleToggleActive(rc)}
-                    className={`rounded-lg border px-3 py-1.5 text-xs transition ${
-                      rc.active ? 'border-amber-200 text-amber-600 hover:bg-amber-50' : 'border-green-200 text-green-600 hover:bg-green-50'
-                    }`}
-                  >
-                    {rc.active ? 'Desativar' : 'Ativar'}
-                  </button>
-                  <button onClick={() => setDeleteId(rc.id)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50">
-                    Excluir
-                  </button>
+
+                {/* Cards grid — 1 col on mobile, 2 on sm, 3 on lg */}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {rcs.map((rc) => (
+                    <div
+                      key={rc.id}
+                      className={`rounded-xl border border-sage-100 bg-white p-4 shadow-sm transition ${!rc.active ? 'opacity-60' : ''}`}
+                    >
+                      {/* Card header */}
+                      <div className="mb-3 flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-sage-800">{rc.classTypeName}</p>
+                          <p className="mt-0.5 text-sm text-sage-500">
+                            {fromLocalTimeString(rc.startTime)} · {rc.durationMin} min
+                          </p>
+                          <p className={`mt-1 text-xs font-medium ${
+                            rc.enrolledCount >= rc.capacity ? 'text-red-500' : 'text-sage-500'
+                          }`}>
+                            {rc.enrolledCount}/{rc.capacity} alunos fixos
+                          </p>
+                        </div>
+                        <span className={`shrink-0 inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          rc.active ? 'bg-green-100 text-green-800' : 'bg-sage-100 text-sage-500'
+                        }`}>
+                          {rc.active ? 'Ativa' : 'Inativa'}
+                        </span>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex flex-wrap gap-1.5 border-t border-sage-50 pt-3">
+                        <button onClick={() => openEnrollments(rc)} className="rounded-lg border border-sand-300 px-2.5 py-1 text-xs text-sand-500 hover:bg-sand-100">
+                          Alunos Fixos
+                        </button>
+                        <button onClick={() => openEdit(rc)} className="rounded-lg border border-sage-200 px-2.5 py-1 text-xs text-sage-600 hover:bg-sage-50">
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => handleToggleActive(rc)}
+                          className={`rounded-lg border px-2.5 py-1 text-xs transition ${
+                            rc.active ? 'border-amber-200 text-amber-600 hover:bg-amber-50' : 'border-green-200 text-green-600 hover:bg-green-50'
+                          }`}
+                        >
+                          {rc.active ? 'Desativar' : 'Ativar'}
+                        </button>
+                        <button onClick={() => setDeleteId(rc.id)} className="rounded-lg border border-red-200 px-2.5 py-1 text-xs text-red-600 hover:bg-red-50">
+                          Excluir
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-
-          {/* ── Desktop: table (hidden below md) ── */}
-          <div className="hidden md:block overflow-hidden rounded-xl border border-sage-100 bg-white shadow-sm">
-          <table className="w-full text-left">
-            <thead className="border-b border-sage-100 bg-sage-50 text-sm text-sage-500">
-              <tr>
-                <th className="px-4 py-3 font-medium">Dia</th>
-                <th className="px-4 py-3 font-medium">Horário</th>
-                <th className="px-4 py-3 font-medium">Tipo</th>
-                <th className="px-4 py-3 font-medium">Duração</th>
-                <th className="px-4 py-3 font-medium">Capacidade</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-sage-50">
-              {items.map((rc) => (
-                <tr key={rc.id} className={`text-sm ${rc.active ? 'text-sage-700' : 'text-sage-400 opacity-70'}`}>
-                  <td className="px-4 py-3 font-medium">
-                    {DAY_OF_WEEK_LABELS[rc.dayOfWeek]}
-                  </td>
-                  <td className="px-4 py-3">{fromLocalTimeString(rc.startTime)}</td>
-                  <td className="px-4 py-3">{rc.classTypeName}</td>
-                  <td className="px-4 py-3">{rc.durationMin} min</td>
-                  <td className="px-4 py-3">{rc.capacity}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      rc.active ? 'bg-green-100 text-green-800' : 'bg-sage-100 text-sage-500'
-                    }`}>
-                      {rc.active ? 'Ativa' : 'Inativa'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => openEnrollments(rc)}
-                        className="rounded-lg border border-sand-300 px-3 py-1 text-xs text-sand-500 hover:bg-sand-100"
-                      >
-                        Alunos Fixos
-                      </button>
-                      <button
-                        onClick={() => openEdit(rc)}
-                        className="rounded-lg border border-sage-200 px-3 py-1 text-xs text-sage-600 hover:bg-sage-50"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => handleToggleActive(rc)}
-                        className={`rounded-lg border px-3 py-1 text-xs transition ${
-                          rc.active
-                            ? 'border-amber-200 text-amber-600 hover:bg-amber-50'
-                            : 'border-green-200 text-green-600 hover:bg-green-50'
-                        }`}
-                      >
-                        {rc.active ? 'Desativar' : 'Ativar'}
-                      </button>
-                      <button
-                        onClick={() => setDeleteId(rc.id)}
-                        className="rounded-lg border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
-                      >
-                        Excluir
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
+            ))
+          })()}
         </>
       )}
 
@@ -503,7 +474,7 @@ export function RecurringClassesAdmin() {
       {/* Fixed enrollments modal */}
       <Modal
         open={enrollRcId !== null}
-        onClose={() => setEnrollRcId(null)}
+        onClose={() => { setEnrollRcId(null); load() }}
         title="Alunos Fixos"
       >
         <div className="mb-4 flex items-center justify-between">

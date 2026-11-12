@@ -145,6 +145,7 @@ public class RecurringClassController {
     }
 
     private RecurringClassResponse toResponse(RecurringClass rc) {
+        long enrolled = fixedEnrollmentRepository.countByRecurringClassIdAndActiveTrue(rc.getId());
         return new RecurringClassResponse(
                 rc.getId(),
                 rc.getDayOfWeek(),
@@ -152,6 +153,7 @@ public class RecurringClassController {
                 rc.getDurationMin(),
                 rc.getClassType().getName(),
                 rc.getCapacity(),
+                enrolled,
                 rc.isActive()
         );
     }

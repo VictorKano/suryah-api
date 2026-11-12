@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { getErrorMessage } from '../api/client'
 import { Spinner } from '../components/Spinner'
 import { ErrorBanner } from '../components/ErrorBanner'
+import { PasswordInput } from '../components/PasswordInput'
 import { PLAN_LABELS, PLAN_OPTIONS } from '../utils/constants'
 import { isValidEmail, isValidPhone, maskPhone } from '../utils/validation'
 import type { PlanType } from '../types'
@@ -97,13 +98,12 @@ export function Register() {
             <label className="mb-1 block text-sm font-medium text-sage-700">
               Senha
             </label>
-            <input
-              type="password"
-              required
+            <PasswordInput
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={inputClass}
+              onChange={setPassword}
               autoComplete="new-password"
+              required
+              minLength={6}
             />
           </div>
 

@@ -9,7 +9,7 @@ services:
     envVars:
       # ── Required — set these in the Render dashboard ───────────────────────
       - key: DB_URL
-        sync: false          # Set manually in Render → value: jdbc:postgresql://ep-summer-moon-b60mm2tt.c-2.sa-east-1.aws.neon.tech/neondb
+        sync: false          # Set manually in Render → value: jdbc:postgresql://ep-summer-moon-b60mm2tt.c-2.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=disable
       - key: DB_USER
         sync: false          # neondb_owner
       - key: DB_PASSWORD

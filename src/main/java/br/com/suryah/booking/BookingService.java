@@ -4,18 +4,21 @@ import br.com.suryah.classsession.ClassSession;
 import br.com.suryah.classsession.ClassSessionRepository;
 import br.com.suryah.classsession.ClassStatus;
 import br.com.suryah.email.EmailService;
+import br.com.suryah.plan.BillingType;
 import br.com.suryah.student.Student;
 import br.com.suryah.student.StudentRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.DayOfWeek;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalAdjusters;
 import java.util.Locale;
 
 @Service
@@ -90,6 +93,9 @@ public class BookingService {
                     }
                 });
 
+        // Enforce weekly session limit for SUBSCRIPTION plans
+        enforceWeeklyLimit(student, session);
+
         long confirmedCount = bookingRepository.countByClassSessionIdAndStatus(sessionId, BookingStatus.CONFIRMED);
         BookingStatus newStatus = confirmedCount < session.getCapacity()
                 ? BookingStatus.CONFIRMED
@@ -118,6 +124,33 @@ public class BookingService {
         }
 
         return saved;
+    }
+
+    /**
+     * For SUBSCRIPTION plan students, checks that booking this session would not
+     * exceed their weeklySessionLimit for the calendar week (Mon–Sun, studio TZ).
+     */
+    private void enforceWeeklyLimit(Student student, ClassSession targetSession) {
+        var plan = student.getPlan();
+        if (plan == null || plan.getBillingType() != BillingType.SUBSCRIPTION) return;
+        Integer limit = plan.getWeeklySessionLimit();
+        if (limit == null) return;
+
+        // Determine the Mon–Sun window of the target session in studio timezone
+        var sessionLocal = targetSession.getStartDateTime()
+                .atZoneSameInstant(STUDIO_ZONE).toLocalDate();
+        var monday = sessionLocal.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        var sunday = monday.plusDays(7);
+
+        OffsetDateTime weekStart = monday.atStartOfDay(STUDIO_ZONE).toOffsetDateTime();
+        OffsetDateTime weekEnd   = sunday.atStartOfDay(STUDIO_ZONE).toOffsetDateTime();
+
+        long used = bookingRepository.countConfirmedInWeek(student.getId(), weekStart, weekEnd);
+        if (used >= limit) {
+            throw new IllegalStateException(
+                    "Limite semanal atingido: seu plano permite até " + limit
+                    + " aula(s) por semana e você já tem " + used + " reserva(s) confirmada(s).");
+        }
     }
 
     /**

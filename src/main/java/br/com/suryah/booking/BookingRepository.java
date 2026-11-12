@@ -28,4 +28,20 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findConfirmedWithoutReminder(
             @org.springframework.data.repository.query.Param("from") java.time.OffsetDateTime from,
             @org.springframework.data.repository.query.Param("to") java.time.OffsetDateTime to);
+
+    /**
+     * Count CONFIRMED bookings for a student within a calendar week window.
+     * Used to enforce weeklySessionLimit for SUBSCRIPTION plans.
+     */
+    @org.springframework.data.jpa.repository.Query("""
+            select count(b) from Booking b
+            where b.student.id = :studentId
+              and b.status = 'CONFIRMED'
+              and b.classSession.startDateTime >= :weekStart
+              and b.classSession.startDateTime < :weekEnd
+            """)
+    long countConfirmedInWeek(
+            @org.springframework.data.repository.query.Param("studentId") Long studentId,
+            @org.springframework.data.repository.query.Param("weekStart") java.time.OffsetDateTime weekStart,
+            @org.springframework.data.repository.query.Param("weekEnd") java.time.OffsetDateTime weekEnd);
 }

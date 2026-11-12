@@ -13,6 +13,8 @@ import { GenerateSessionsAdmin } from './pages/admin/GenerateSessions'
 import { SessionManagementAdmin } from './pages/admin/SessionManagement'
 import { StudentsAdmin } from './pages/admin/Students'
 import { ReportsAdmin } from './pages/admin/Reports'
+import { PlansAdmin } from './pages/admin/Plans'
+import { RevenueAdmin } from './pages/admin/Revenue'
 
 /** Role-aware landing: students go to the schedule, admins to the dashboard. */
 function Home() {
@@ -102,6 +104,22 @@ export default function App() {
           element={
             <AdminRoute>
               <ReportsAdmin />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/plans"
+          element={
+            <AdminRoute>
+              <PlansAdmin />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/revenue"
+          element={
+            <AdminRoute>
+              <RevenueAdmin />
             </AdminRoute>
           }
         />

@@ -26,6 +26,7 @@ export interface RegisterRequest {
   age?: number
   password: string
   planType: PlanType
+  planId?: number
 }
 
 export interface LoginRequest {
@@ -88,6 +89,7 @@ export interface RecurringClassResponse {
   durationMin: number
   classTypeName: string
   capacity: number
+  enrolledCount: number
   active: boolean
 }
 
@@ -171,6 +173,8 @@ export interface StudentDetail {
   phone: string | null
   age: number | null
   planType: PlanType
+  planId: number | null
+  planName: string | null
   active: boolean
   createdAt: string
 }
@@ -181,6 +185,7 @@ export interface AdminUpdateStudentRequest {
   phone?: string
   age?: number | null
   planType?: PlanType
+  planId?: number | null
 }
 
 export interface StudentBookingEntry {
@@ -236,6 +241,109 @@ export interface OccupancyReport {
     weekStart: string
     confirmed: number
     cancellations: number
+  }>
+}
+
+// ── Plans ─────────────────────────────────────────────────────────────────────
+
+export type BillingType = 'PER_SESSION' | 'SUBSCRIPTION'
+export type BillingCycle = 'MONTHLY' | 'SEMESTER' | 'ANNUAL'
+
+export interface PlanResponse {
+  id: number
+  name: string
+  pricePerAttendance: number
+  billingType: BillingType
+  billingCycle: BillingCycle | null
+  weeklySessionLimit: number | null
+  price: number | null
+  active: boolean
+  createdAt: string
+}
+
+export interface PlanRequest {
+  name: string
+  pricePerAttendance: number
+  billingType: BillingType
+  billingCycle: BillingCycle | null
+  weeklySessionLimit: number | null
+  price: number | null
+}
+
+// ── Subscription Payments ─────────────────────────────────────────────────────
+
+export interface SubscriptionPaymentResponse {
+  id: number
+  studentId: number
+  studentName: string
+  planId: number
+  planName: string
+  periodStart: string
+  periodEnd: string
+  amountPaid: number
+  note: string | null
+  paidAt: string
+}
+
+export interface SubscriptionPaymentRequest {
+  periodStart: string
+  periodEnd: string
+  amountPaid: number
+  note?: string
+}
+
+// ── Weekly usage (for SUBSCRIPTION students) ──────────────────────────────────
+
+export interface WeeklyUsageResponse {
+  used: number | null
+  limit: number | null
+  remaining: number | null
+}
+
+// ── Revenue report ────────────────────────────────────────────────────────────
+
+export interface RevenueReport {
+  summary: {
+    totalAttended: number
+    totalAbsent: number
+    totalPending: number
+    confirmedRevenue: number
+    potentialRevenue: number
+    lostRevenue: number
+  }
+  series: Array<{
+    period: string
+    attended: number
+    absent: number
+    pending: number
+    revenue: number
+  }>
+  byPlan: Array<{
+    planName: string
+    attended: number
+    absent: number
+    revenue: number
+  }>
+  topStudents: Array<{
+    studentId: number
+    studentName: string
+    planName: string
+    attended: number
+    revenue: number
+  }>
+  subscriptionSummary: {
+    totalPayments: number
+    totalCollected: number
+  }
+  subscriptionByPlan: Array<{
+    planName: string
+    payments: number
+    total: number
+  }>
+  subscriptionSeries: Array<{
+    period: string
+    payments: number
+    total: number
   }>
 }
 

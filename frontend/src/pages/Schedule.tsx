@@ -14,6 +14,7 @@ import {
 import { ptBR } from 'date-fns/locale'
 import { listClassSessions } from '../api/classSessions'
 import { bookSession, cancelBooking, listMyBookings } from '../api/bookings'
+import { getWeeklyUsage } from '../api/me'
 import { getErrorMessage } from '../api/client'
 import { Spinner } from '../components/Spinner'
 import { ErrorBanner } from '../components/ErrorBanner'
@@ -22,7 +23,7 @@ import { Modal } from '../components/Modal'
 import { useToast } from '../components/Toast'
 import { formatDuration } from '../utils/format'
 import { STUDIO_TIMEZONE } from '../utils/constants'
-import type { BookingResponse, ClassSessionResponse } from '../types'
+import type { BookingResponse, ClassSessionResponse, WeeklyUsageResponse } from '../types'
 
 function sessionTime(iso: string): string {
   return new Intl.DateTimeFormat('pt-BR', {
@@ -40,22 +41,19 @@ function sessionDate(iso: string): Date {
 interface SessionCardProps {
   session: ClassSessionResponse
   onClick: () => void
-  compact?: boolean // true = grid cell, false = list item
+  compact?: boolean
 }
 
 function SessionCard({ session, onClick, compact = true }: SessionCardProps) {
   const full = session.availableSpots === 0
   const booked = session.myBookingStatus === 'CONFIRMED' || session.myBookingStatus === 'WAITLIST'
   const onWaitlist = session.myBookingStatus === 'WAITLIST'
-
   const bg = booked
     ? onWaitlist ? 'bg-amber-100 ring-1 ring-amber-300' : 'bg-sage-100 ring-1 ring-sage-300'
     : full ? 'bg-orange-50 hover:bg-orange-100' : 'bg-sage-50 hover:bg-sage-100'
-
   const statusText = booked
     ? onWaitlist ? 'Lista de espera' : 'Inscrito ✓'
     : full ? 'Fila' : `${session.availableSpots} vaga${session.availableSpots !== 1 ? 's' : ''}`
-
   const statusColor = booked ? 'text-sage-600' : full ? 'text-orange-600' : 'text-sage-600'
 
   if (compact) {
@@ -94,6 +92,7 @@ function SessionCard({ session, onClick, compact = true }: SessionCardProps) {
 export function Schedule() {
   const { toast } = useToast()
 
+  const [weeklyUsage, setWeeklyUsage] = useState<WeeklyUsageResponse | null>(null)
   const [weekStart, setWeekStart] = useState<Date>(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 }),
   )
@@ -114,12 +113,16 @@ export function Schedule() {
     setLoading(true)
     setError(null)
     try {
-      const [data, bookings] = await Promise.all([
+      // Pass any date within the viewed week so the backend calculates usage for that week
+      const weekOf = from.toISOString().slice(0, 10)
+      const [data, bookings, usage] = await Promise.all([
         listClassSessions(from.toISOString(), to.toISOString()),
         listMyBookings(),
+        getWeeklyUsage(weekOf),
       ])
       setSessions(data)
       setMyBookings(bookings)
+      setWeeklyUsage(usage)
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -242,13 +245,46 @@ export function Schedule() {
           <span className={`hidden text-sm font-medium sm:inline ${isPastWeek ? 'text-sage-400' : 'text-sage-600'}`}>{weekLabel}</span>
           <button onClick={reload} className="rounded-lg border border-sage-200 px-2.5 py-1.5 text-sm text-sage-600 transition hover:bg-sage-50" aria-label="Atualizar">↺</button>
         </div>
-        {/* Week label on its own line on very small screens */}
         <p className={`w-full text-sm sm:hidden ${isPastWeek ? 'text-sage-400' : 'text-sage-600'}`}>{weekLabel}</p>
       </div>
 
       <ErrorBanner message={error} />
 
-      {/* ── MOBILE: list view grouped by day (hidden on md+) ── */}
+      {/* ── Banner de uso semanal — só para alunos com plano de assinatura ── */}
+      {weeklyUsage?.limit != null && (
+        <div className={`mb-4 flex items-center gap-3 rounded-xl border px-4 py-3 ${
+          weeklyUsage.remaining === 0
+            ? 'border-red-200 bg-red-50'
+            : (weeklyUsage.remaining ?? 0) <= 1
+              ? 'border-amber-200 bg-amber-50'
+              : 'border-sage-200 bg-sage-50'
+        }`}>
+          <div className="flex-1">
+            <p className={`text-sm font-medium ${
+              weeklyUsage.remaining === 0 ? 'text-red-700'
+              : (weeklyUsage.remaining ?? 0) <= 1 ? 'text-amber-700'
+              : 'text-sage-700'
+            }`}>
+              {weeklyUsage.remaining === 0
+                ? 'Limite semanal atingido — sem aulas disponíveis esta semana.'
+                : `${weeklyUsage.remaining} aula${weeklyUsage.remaining !== 1 ? 's' : ''} disponível${weeklyUsage.remaining !== 1 ? 'is' : ''} esta semana`}
+            </p>
+            <p className="mt-0.5 text-xs text-sage-400">
+              {weeklyUsage.used} de {weeklyUsage.limit} usada{weeklyUsage.used !== 1 ? 's' : ''} · plano {weeklyUsage.limit}x/semana
+            </p>
+          </div>
+          <div className="flex gap-1">
+            {Array.from({ length: weeklyUsage.limit }).map((_, i) => (
+              <div
+                key={i}
+                className={`h-2.5 w-2.5 rounded-full ${i < (weeklyUsage.used ?? 0) ? 'bg-sage-600' : 'bg-sage-200'}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── MOBILE: list view grouped by day ── */}
       <div className="block md:hidden">
         {loading ? (
           <div className="flex justify-center py-16"><Spinner className="text-sage-400" /></div>
@@ -263,8 +299,7 @@ export function Schedule() {
               if (daySessions.length === 0) return null
               return (
                 <div key={idx}>
-                  {/* Day header */}
-                  <div className={`mb-2 flex items-center gap-2`}>
+                  <div className="mb-2 flex items-center gap-2">
                     <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
                       isToday(day) ? 'bg-sage-600 text-white' : 'bg-sage-100 text-sage-600'
                     }`}>
@@ -272,19 +307,14 @@ export function Schedule() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold capitalize text-sage-700">
-                        {format(day, "EEEE", { locale: ptBR })}
+                        {format(day, 'EEEE', { locale: ptBR })}
                       </p>
                       <p className="text-xs text-sage-400">{format(day, 'dd/MM', { locale: ptBR })}</p>
                     </div>
                   </div>
                   <div className="space-y-2 pl-11">
                     {daySessions.map((session) => (
-                      <SessionCard
-                        key={session.id}
-                        session={session}
-                        onClick={() => openSession(session)}
-                        compact={false}
-                      />
+                      <SessionCard key={session.id} session={session} onClick={() => openSession(session)} compact={false} />
                     ))}
                   </div>
                 </div>
@@ -294,42 +324,30 @@ export function Schedule() {
         )}
       </div>
 
-      {/* ── DESKTOP: 7-column grid calendar (hidden below md) ── */}
+      {/* ── DESKTOP: 7-column grid calendar ── */}
       <div className="hidden md:block">
         <div className="overflow-x-auto rounded-xl border border-sage-100 bg-white shadow-sm">
-          {/* Day headers */}
           <div className="grid border-b border-sage-100" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
             {days.map((day, idx) => (
               <div key={idx} className={`border-r border-sage-50 px-2 py-3 text-center last:border-r-0 ${isToday(day) ? 'bg-sage-50' : ''}`}>
-                <p className="text-xs font-medium uppercase tracking-wide text-sage-400">
-                  {format(day, 'EEE', { locale: ptBR })}
-                </p>
+                <p className="text-xs font-medium uppercase tracking-wide text-sage-400">{format(day, 'EEE', { locale: ptBR })}</p>
                 <p className={`mt-0.5 text-lg font-semibold leading-none ${isToday(day) ? 'mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-sage-600 text-white' : 'text-sage-700'}`}>
                   {format(day, 'd')}
                 </p>
               </div>
             ))}
           </div>
-
-          {/* Session cells */}
           <div className="grid min-h-[200px]" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
             {days.map((_, idx) => {
               const daySessions = sessionsByDay.get(idx) ?? []
               return (
                 <div key={idx} className="border-r border-sage-50 p-1.5 last:border-r-0">
                   {loading ? (
-                    <div className="flex h-16 items-center justify-center">
-                      <Spinner className="text-sage-300" />
-                    </div>
+                    <div className="flex h-16 items-center justify-center"><Spinner className="text-sage-300" /></div>
                   ) : (
                     <div className="flex flex-col gap-1.5">
                       {daySessions.map((session) => (
-                        <SessionCard
-                          key={session.id}
-                          session={session}
-                          onClick={() => openSession(session)}
-                          compact={true}
-                        />
+                        <SessionCard key={session.id} session={session} onClick={() => openSession(session)} compact={true} />
                       ))}
                     </div>
                   )}
@@ -337,7 +355,6 @@ export function Schedule() {
               )
             })}
           </div>
-
           {!loading && sessions.length === 0 && (
             <div className="border-t border-sage-50 py-12 text-center text-sm text-sage-400">
               Nenhuma aula disponível nesta semana.
@@ -365,9 +382,7 @@ export function Schedule() {
                   <span className="font-medium text-sage-700">Vagas: </span>
                   {selectedSession.confirmedCount}/{selectedSession.capacity}
                   {selectedSession.availableSpots > 0 && (
-                    <span className="ml-1 text-sage-500">
-                      ({selectedSession.availableSpots} disponív{selectedSession.availableSpots !== 1 ? 'eis' : 'el'})
-                    </span>
+                    <span className="ml-1 text-sage-500">({selectedSession.availableSpots} disponív{selectedSession.availableSpots !== 1 ? 'eis' : 'el'})</span>
                   )}
                 </p>
                 {selectedSession.myBookingStatus && (
@@ -376,26 +391,17 @@ export function Schedule() {
                   </div>
                 )}
               </div>
-
               <ErrorBanner message={actionError} />
-
               {booked ? (
                 <div>
                   <p className="mb-4 text-sm text-sage-500">
-                    {booking.status === 'WAITLIST'
-                      ? 'Você está na lista de espera desta aula.'
-                      : 'Você está inscrito nesta aula.'}
+                    {booking.status === 'WAITLIST' ? 'Você está na lista de espera desta aula.' : 'Você está inscrito nesta aula.'}
                   </p>
                   <div className="flex justify-end gap-3">
                     <button onClick={() => { setSelectedSession(null); setActionError(null) }} className="rounded-lg px-4 py-2 text-sm text-sage-600 hover:bg-sage-50">Fechar</button>
                     <button
                       onClick={() => { setSelectedSession(null); setConfirmCancelBookingId(booking.id) }}
                       disabled={new Date(selectedSession.startDateTime).getTime() - Date.now() < 12 * 60 * 60 * 1000}
-                      title={
-                        new Date(selectedSession.startDateTime).getTime() - Date.now() < 12 * 60 * 60 * 1000
-                          ? 'Cancelamento não permitido com menos de 12h de antecedência'
-                          : 'Cancelar inscrição'
-                      }
                       className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       Cancelar inscrição
@@ -407,11 +413,8 @@ export function Schedule() {
                   {full && <p className="mb-4 text-sm text-amber-600">A aula está lotada — você entrará na lista de espera.</p>}
                   <div className="flex justify-end gap-3">
                     <button onClick={() => { setSelectedSession(null); setActionError(null) }} className="rounded-lg px-4 py-2 text-sm text-sage-600 hover:bg-sage-50">Fechar</button>
-                    <button
-                      onClick={() => handleBook(selectedSession)}
-                      disabled={actioning}
-                      className="flex items-center gap-2 rounded-lg bg-sage-600 px-4 py-2 text-sm font-medium text-white hover:bg-sage-700 disabled:opacity-60"
-                    >
+                    <button onClick={() => handleBook(selectedSession)} disabled={actioning}
+                      className="flex items-center gap-2 rounded-lg bg-sage-600 px-4 py-2 text-sm font-medium text-white hover:bg-sage-700 disabled:opacity-60">
                       {actioning && <Spinner />}
                       {full ? 'Entrar na fila' : 'Reservar'}
                     </button>

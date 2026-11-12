@@ -13,6 +13,8 @@ public record StudentDetail(
         String phone,
         Integer age,
         PlanType planType,
+        Long planId,
+        String planName,
         boolean active,
         OffsetDateTime createdAt
 ) {}

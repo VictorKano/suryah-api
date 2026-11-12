@@ -9,6 +9,7 @@ import { getErrorMessage } from '../../api/client'
 import { ErrorBanner } from '../../components/ErrorBanner'
 import { Spinner } from '../../components/Spinner'
 import { useToast } from '../../components/Toast'
+import { UpcomingSessions } from '../../components/UpcomingSessions'
 
 export function AdminDashboard() {
   const { toast } = useToast()
@@ -133,6 +134,17 @@ export function AdminDashboard() {
             <p className={`mt-1 text-sm ${link.descClass ?? 'text-sage-100'}`}>{link.desc}</p>
           </Link>
         ))}
+      </div>
+
+      {/* Próximas sessões */}
+      <div className="mt-8">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-sage-800">Próximas sessões</h2>
+          <Link to="/admin/sessions" className="text-sm text-sage-500 hover:text-sage-700">
+            Ver todas →
+          </Link>
+        </div>
+        <UpcomingSessions />
       </div>
     </div>
   )

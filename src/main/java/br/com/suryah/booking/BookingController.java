@@ -71,6 +71,26 @@ public class BookingController {
     }
 
     /**
+     * Admin books a specific student into a session.
+     * Bypasses the student-only restriction on the regular book endpoint.
+     */
+    @PostMapping("/api/admin/sessions/{sessionId}/bookings")
+    @PreAuthorize("hasRole('ADMIN')")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Transactional
+    public BookingResponse adminBook(@PathVariable Long sessionId,
+                                     @RequestBody AdminBookRequest request) {
+        try {
+            Booking booking = bookingService.book(sessionId, request.studentId());
+            return toResponse(booking);
+        } catch (jakarta.persistence.EntityNotFoundException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        }
+    }
+
+    /**
      * List all bookings for a specific session (admin only).
      * Ordered by status (CONFIRMED first, then WAITLIST) then by booking time.
      */
@@ -112,6 +132,19 @@ public class BookingController {
         }
 
         booking.setAttended(request.attended());
+
+        // Snapshot the plan price when marking attendance.
+        // Only set when marking as attended=true and not yet snapshotted.
+        if (Boolean.TRUE.equals(request.attended()) && booking.getPricePerAttendance() == null) {
+            br.com.suryah.plan.Plan plan = booking.getStudent().getPlan();
+            if (plan != null) {
+                booking.setPricePerAttendance(plan.getPricePerAttendance());
+            }
+        }
+        // Clear price if unmarking (setting to null or false)
+        if (request.attended() == null || Boolean.FALSE.equals(request.attended())) {
+            booking.setPricePerAttendance(null);
+        }
         Booking saved = bookingRepository.save(booking);
 
         return new SessionBookingResponse(

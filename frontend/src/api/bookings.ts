@@ -38,3 +38,14 @@ export async function markAttendance(
   )
   return res.data
 }
+
+export async function adminBookStudent(
+  sessionId: number,
+  studentId: number,
+): Promise<BookingResponse> {
+  const res = await api.post<BookingResponse>(
+    `/api/admin/sessions/${sessionId}/bookings`,
+    { studentId },
+  )
+  return res.data
+}

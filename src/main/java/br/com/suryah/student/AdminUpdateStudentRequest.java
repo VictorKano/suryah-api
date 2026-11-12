@@ -11,5 +11,6 @@ public record AdminUpdateStudentRequest(
         @Email(message = "Invalid email format") String email,
         String phone,
         Integer age,
-        PlanType planType
+        PlanType planType,
+        Long planId
 ) {}

@@ -33,6 +33,10 @@ public class Student {
     @Column(name = "plan_type", nullable = false)
     private PlanType planType;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "plan_id")
+    private br.com.suryah.plan.Plan plan;
+
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
